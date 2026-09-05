@@ -1,0 +1,31 @@
+{
+  "name": "tablechat-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@types/node": "22.13.10",
+    "@types/react": "19.0.10",
+    "@types/react-dom": "19.0.4",
+    "chess.js": "1.2.0",
+    "lucide-react": "0.475.0",
+    "next": "15.2.1",
+    "react": "19.0.0",
+    "react-chessboard": "4.7.3",
+    "react-dom": "19.0.0",
+    "stockfish": "16.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "16.2.0",
+    "jsdom": "26.0.0",
+    "typescript": "5.7.3",
+    "vitest": "3.0.8"
+  }
+}
+
