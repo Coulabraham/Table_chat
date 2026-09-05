@@ -1,6 +1,6 @@
 # TableChat — V1
 
-TableChat est une application web française de jeux de société entre amis. Cette V1 livre un module d’échecs complet : comptes, amis, invitations privées, parties serveur autoritaires, entraînement Stockfish, chat persistant et leçons interactives.
+TableChat est une application web française de jeux de société entre amis. Elle propose les Échecs et l’Awalé : comptes, amis, invitations privées, parties serveur autoritaires, adversaires IA, chat persistant et leçons interactives.
 
 ## Architecture retenue
 
@@ -8,7 +8,7 @@ TableChat est une application web française de jeux de société entre amis. Ce
 - `backend/` : Django 5.1, Django REST Framework, Channels/ASGI et Celery.
 - PostgreSQL : source de vérité pour comptes, relations, parties, messages et progression.
 - Redis : couche Channels et broker Celery, jamais stockage métier unique.
-- `games` reste générique (partie, participants, invitation) ; `chess_game` contient uniquement les règles et états d’échecs afin d’éviter un moteur universel prématuré et un conflit avec le paquet Python `chess`.
+- `games` reste générique (type de jeu, partie, participants, invitation) ; `chess_game` contient les règles et états d’échecs, tandis que `awale` possède son propre moteur Abapa, son état persistant et son IA alpha-bêta.
 
 Les sessions Django avec cookie HttpOnly sont utilisées. Le frontend récupère d’abord un cookie CSRF via `GET /api/auth/csrf/`, envoie `X-CSRFToken` pour toute mutation et inclut les cookies dans les appels HTTP. Les WebSockets réutilisent le cookie de session via `AuthMiddlewareStack` et vérifient l’appartenance à la partie ou à la conversation avant d’accepter la connexion.
 
@@ -73,6 +73,7 @@ Le binaire Stockfish serveur est installé automatiquement par le Dockerfile Deb
 | Parties | `GET/POST /api/games/`, `GET /api/games/<id>/`, `POST /api/games/<id>/{resign,draw}/` |
 | Invitations | `GET/POST /api/games/invitations/`, `POST .../<id>/{accept,decline,cancel}/` |
 | Échecs | `GET .../games/<id>/state/`, `POST .../moves/`, `POST .../ai-turn/`, `POST .../engine/` |
+| Awalé | `GET /api/awale/games/<id>/state/`, `POST .../moves/`, `POST .../ai-turn/` |
 | Chat | `GET/POST conversations/`, `GET/POST .../messages/`, `POST .../read/` |
 | Leçons | `GET lessons/`, `GET lessons/<id>/`, `POST lessons/<id>/{start,attempt,hint,undo}/` |
 
@@ -81,9 +82,12 @@ Toutes les routes sont préfixées par `/api/`. Les listes et historiques sont p
 ## WebSockets
 
 - `/ws/games/<uuid>/` : le client reçoit `game.state`, envoie `game.move` avec `{uci, request_id, revision}` ou `game.sync`. Les erreurs arrivent via `game.error`.
+- `/ws/awale/games/<uuid>/` : le client reçoit `awale.state`, envoie `awale.move` avec `{pit, request_id, revision}` ou `awale.sync`.
 - `/ws/conversations/<uuid>/` : le client envoie/reçoit `chat.message` avec `{content, client_id}`. `client_id` déduplique les reprises ; la fréquence et la longueur sont bornées.
 
 Pour un coup multijoueur, le serveur verrouille la ligne `ChessState`, revérifie participant, statut, tour, révision et légalité avec `python-chess`, calcule SAN/FEN/PGN et fin de partie, incrémente la révision, persiste le tout puis diffuse l’état confirmé. Un FEN client n’est jamais accepté comme nouvel état.
+
+Pour l’Awalé, le serveur applique le règlement immuable `abapa_tablechat_v1` : semis avec saut du trou d’origine, captures en chaîne, annulation d’une capture affamant l’adversaire, obligation de nourrir, majorité à 25 graines, décompte final et troisième répétition TableChat. La somme plateau + scores est vérifiée à 48 graines à chaque transition.
 
 ## Tester deux sessions
 

@@ -1,3 +1,4 @@
+import logging
 import random
 
 from asgiref.sync import async_to_sync
@@ -14,6 +15,8 @@ from friends.models import Friendship
 from .models import Game, GameInvitation, GameParticipant
 from .serializers import GameSerializer, InvitationSerializer
 
+logger = logging.getLogger(__name__)
+
 
 class GameListCreateView(generics.ListCreateAPIView):
     serializer_class = GameSerializer
@@ -27,13 +30,29 @@ class GameListCreateView(generics.ListCreateAPIView):
         if mode != Game.Mode.AI:
             raise ValidationError("Une partie humaine se crée en acceptant une invitation.")
         config = self.request.data.get("configuration", {})
-        color = config.get("color", "white")
-        if color == "random":
-            color = random.choice(["white", "black"])
-        game = serializer.save(mode=Game.Mode.AI, status=Game.Status.IN_PROGRESS, started_at=timezone.now(), configuration={**config, "color": color})
-        GameParticipant.objects.create(game=game, user=self.request.user, role=color)
-        from chess_game.models import ChessState
-        ChessState.objects.create(game=game)
+        game_type = self.request.data.get("game_type", Game.Type.CHESS)
+        if game_type == Game.Type.CHESS:
+            role = config.get("color", "white")
+            if role == "random":
+                role = random.choice(["white", "black"])
+            config = {**config, "color": role}
+        elif game_type == Game.Type.AWALE:
+            role = config.get("side", "player0")
+            if role == "random":
+                role = random.choice(["player0", "player1"])
+            if role not in {"player0", "player1"}:
+                raise ValidationError("Camp d’Awalé invalide.")
+            config = {**config, "side": role, "ruleset": "abapa_tablechat_v1"}
+        else:
+            raise ValidationError("Type de jeu inconnu.")
+        game = serializer.save(game_type=game_type, mode=Game.Mode.AI, status=Game.Status.IN_PROGRESS, started_at=timezone.now(), configuration=config)
+        GameParticipant.objects.create(game=game, user=self.request.user, role=role)
+        if game_type == Game.Type.CHESS:
+            from chess_game.models import ChessState
+            ChessState.objects.create(game=game)
+        else:
+            from awale.models import AwaleGameState
+            AwaleGameState.create_for_game(game)
 
 
 class GameDetailView(generics.RetrieveAPIView):
@@ -53,7 +72,8 @@ class GameActionView(APIView):
             raise ValidationError("La partie n’est pas active.")
         if action == "resign":
             participant = game.participants.get(user=request.user)
-            game.result = "0-1" if participant.role == "white" else "1-0"
+            first_role = "white" if game.game_type == Game.Type.CHESS else "player0"
+            game.result = "0-1" if participant.role == first_role else "1-0"
             game.end_reason = "abandon"
             game.status = Game.Status.FINISHED
             game.finished_at = timezone.now()
@@ -99,15 +119,27 @@ class InvitationActionView(APIView):
         if action == "accept":
             if invitation.recipient != request.user:
                 raise PermissionDenied()
-            game = Game.objects.create(mode=Game.Mode.HUMAN, status=Game.Status.IN_PROGRESS, configuration=invitation.configuration, started_at=timezone.now())
-            sender_color = invitation.configuration.get("sender_color", "white")
+            game = Game.objects.create(game_type=invitation.game_type, mode=Game.Mode.HUMAN, status=Game.Status.IN_PROGRESS, configuration=invitation.configuration, started_at=timezone.now())
+            if invitation.game_type == Game.Type.AWALE:
+                sender_color = invitation.configuration.get("sender_role", "player0")
+                valid_roles = {"player0", "player1"}
+                if sender_color not in valid_roles:
+                    sender_color = "player0"
+                other_color = "player1" if sender_color == "player0" else "player0"
+            else:
+                sender_color = invitation.configuration.get("sender_color", "white")
+                other_color = "black" if sender_color == "white" else "white"
             GameParticipant.objects.bulk_create([
                 GameParticipant(game=game, user=invitation.sender, role=sender_color),
-                GameParticipant(game=game, user=invitation.recipient, role="black" if sender_color == "white" else "white"),
+                GameParticipant(game=game, user=invitation.recipient, role=other_color),
             ])
-            from chess_game.models import ChessState
             from chat.models import Conversation, ConversationParticipant
-            ChessState.objects.create(game=game)
+            if invitation.game_type == Game.Type.AWALE:
+                from awale.models import AwaleGameState
+                AwaleGameState.create_for_game(game)
+            else:
+                from chess_game.models import ChessState
+                ChessState.objects.create(game=game)
             conversation = Conversation.objects.create(kind=Conversation.Kind.GAME, game=game)
             ConversationParticipant.objects.bulk_create([
                 ConversationParticipant(conversation=conversation, user=invitation.sender),
@@ -118,6 +150,7 @@ class InvitationActionView(APIView):
             payload = {
                 "type": "game.ready",
                 "game_id": str(game.id),
+                "game_type": game.game_type,
                 "invitation_id": str(invitation.id),
             }
             participant_ids = (invitation.sender_id, invitation.recipient_id)
@@ -125,7 +158,10 @@ class InvitationActionView(APIView):
             def notify_participants():
                 channel_layer = get_channel_layer()
                 for user_id in participant_ids:
-                    async_to_sync(channel_layer.group_send)(f"user_{user_id}", {"type": "game_ready", "payload": payload})
+                    try:
+                        async_to_sync(channel_layer.group_send)(f"user_{user_id}", {"type": "game_ready", "payload": payload})
+                    except Exception:
+                        logger.exception("Notification temps réel indisponible pour l’utilisateur %s", user_id)
 
             transaction.on_commit(notify_participants)
         elif action in {"decline", "cancel"}:

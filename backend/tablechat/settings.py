@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     "games",
     "chat",
     "chess_game",
+    "awale",
 ]
 
 MIDDLEWARE = [

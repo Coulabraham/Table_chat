@@ -66,12 +66,12 @@ class AiTurnView(APIView):
 
 
 class LessonListView(generics.ListAPIView):
-    queryset = Lesson.objects.all()
+    queryset = Lesson.objects.filter(game_type="chess")
     serializer_class = LessonSerializer
 
 
 class LessonDetailView(generics.RetrieveAPIView):
-    queryset = Lesson.objects.all()
+    queryset = Lesson.objects.filter(game_type="chess")
     serializer_class = LessonSerializer
 
 

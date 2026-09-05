@@ -19,7 +19,7 @@ class LessonSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Lesson
-        fields = ("id", "title", "instruction", "initial_fen", "side_to_move", "objective", "difficulty", "hints", "explanation", "coach_messages", "order", "progress", "next_lesson_id")
+        fields = ("id", "game_type", "content", "title", "instruction", "initial_fen", "side_to_move", "objective", "difficulty", "hints", "explanation", "coach_messages", "order", "progress", "next_lesson_id")
 
     def get_progress(self, obj):
         request = self.context.get("request")
@@ -29,4 +29,4 @@ class LessonSerializer(serializers.ModelSerializer):
         return serialize_session(progress, obj) if progress else None
 
     def get_next_lesson_id(self, obj):
-        return Lesson.objects.filter(order__gt=obj.order).order_by("order").values_list("id", flat=True).first()
+        return Lesson.objects.filter(game_type=obj.game_type, order__gt=obj.order).order_by("order").values_list("id", flat=True).first()

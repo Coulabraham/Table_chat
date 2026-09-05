@@ -9,6 +9,7 @@ import { api, wsUrl } from "@/lib/api";
 type Invitation = {
   id: string;
   sender: { id: number };
+  game_type: "chess" | "awale";
   status: string;
   game_id: string | null;
 };
@@ -30,8 +31,9 @@ export function GameInvitationWatcher() {
     let socket: WebSocket | null = null;
     let reconnectTimer: number | undefined;
 
-    const openGame = (gameId: string) => {
-      if (!window.location.pathname.startsWith(`/games/${gameId}`)) router.push(`/games/${gameId}`);
+    const openGame = (gameId: string, gameType: "chess" | "awale" = "chess") => {
+      const destination = gameType === "awale" ? `/awale/games/${gameId}` : `/games/${gameId}`;
+      if (window.location.pathname !== destination) router.push(destination);
     };
 
     const poll = async () => {
@@ -41,7 +43,7 @@ export function GameInvitationWatcher() {
         const sent = response.results.filter((item) => item.sender.id === user.id);
         if (initialized.current) {
           const accepted = sent.find((item) => item.status === "accepted" && item.game_id && pendingSent.current.has(item.id));
-          if (accepted?.game_id) openGame(accepted.game_id);
+          if (accepted?.game_id) openGame(accepted.game_id, accepted.game_type);
         }
         pendingSent.current = new Set(sent.filter((item) => item.status === "pending").map((item) => item.id));
         initialized.current = true;
@@ -55,7 +57,7 @@ export function GameInvitationWatcher() {
       socket = new WebSocket(wsUrl("/notifications/"));
       socket.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        if (data.type === "game.ready" && data.game_id) openGame(data.game_id);
+        if (data.type === "game.ready" && data.game_id) openGame(data.game_id, data.game_type);
       };
       socket.onclose = () => {
         if (active) reconnectTimer = window.setTimeout(connect, 1500);

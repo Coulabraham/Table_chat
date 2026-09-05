@@ -15,6 +15,13 @@ LESSONS = [
     {"title": "Promotion", "instruction": "Transformez le pion pour gagner.", "initial_fen": "7k/P7/6K1/8/8/8/8/8 w - - 0 1", "side_to_move": "white", "objective": "Promouvoir avec échec", "difficulty": "Intermédiaire", "accepted_lines": [["a7a8q"]], "hint": "Choisissez une dame à la promotion.", "hints": ["Le pion n’est plus qu’à une case de la promotion.", "La nouvelle pièce peut immédiatement donner échec.", "Avancez en a8 et choisissez une dame."], "coach_messages": {"intro": "Une promotion est encore plus forte lorsqu’elle gagne un tempo.", "retry": "Vous pouvez obtenir une pièce plus puissante tout en attaquant le roi.", "complete": "Bravo. a8=D+ crée une dame et oblige immédiatement le roi à répondre."}, "explanation": "a8=D+ obtient immédiatement une dame avec tempo.", "order": 5},
 ]
 
+AWALE_LESSONS = [
+    {"title": "Semer les graines", "instruction": "Distribuez les quatre graines du premier trou.", "objective": "Comprendre le sens du semis", "difficulty": "Débutant", "order": 1, "content": {"pits": [4,4,4,4,4,4,4,4,4,4,4,4], "legal": [0], "answer": 0}},
+    {"title": "Capturer", "instruction": "Terminez sur un trou adverse contenant deux ou trois graines.", "objective": "Réaliser une capture", "difficulty": "Débutant", "order": 2, "content": {"pits": [0,0,0,0,0,1,1,4,4,4,4,4], "legal": [5], "answer": 5}},
+    {"title": "Nourrir l’adversaire", "instruction": "Le camp adverse est vide : rendez-lui au moins une graine.", "objective": "Respecter l’obligation de nourrir", "difficulty": "Débutant", "order": 3, "content": {"pits": [0,0,0,0,1,11,0,0,0,0,0,0], "legal": [5], "answer": 5}},
+    {"title": "Capture annulée", "instruction": "Anticipez une capture qui viderait le camp adverse.", "objective": "Éviter la famine", "difficulty": "Intermédiaire", "order": 4, "content": {"pits": [9,9,9,9,9,1,1,0,0,0,0,0], "legal": [5], "answer": 5}},
+]
+
 
 class Command(BaseCommand):
     help = "Crée deux comptes, une amitié, une conversation et cinq leçons de démonstration."
@@ -36,5 +43,11 @@ class Command(BaseCommand):
             ConversationParticipant.objects.bulk_create([ConversationParticipant(conversation=conversation, user=alice), ConversationParticipant(conversation=conversation, user=camille)])
             Message.objects.create(conversation=conversation, author=camille, client_id="00000000-0000-0000-0000-000000000001", content="On fait une partie ?")
         for data in LESSONS:
-            Lesson.objects.update_or_create(order=data["order"], defaults=data)
+            Lesson.objects.update_or_create(game_type="chess", order=data["order"], defaults=data)
+        for data in AWALE_LESSONS:
+            Lesson.objects.update_or_create(
+                game_type="awale",
+                order=data["order"],
+                defaults={**data, "initial_fen": "", "side_to_move": "white", "accepted_lines": [], "hint": "", "hints": [], "coach_messages": {}, "explanation": data["objective"]},
+            )
         self.stdout.write(self.style.SUCCESS("Données de démonstration prêtes (mot de passe : TableChat123!)."))

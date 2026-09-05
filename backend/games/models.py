@@ -11,6 +11,10 @@ def invitation_expiry():
 
 
 class Game(models.Model):
+    class Type(models.TextChoices):
+        CHESS = "chess", "Échecs"
+        AWALE = "awale", "Awalé"
+
     class Mode(models.TextChoices):
         HUMAN = "human", "Entre amis"
         AI = "ai", "Contre l’IA"
@@ -22,7 +26,7 @@ class Game(models.Model):
         CANCELLED = "cancelled", "Annulée"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    game_type = models.CharField(max_length=30, default="chess")
+    game_type = models.CharField(max_length=30, choices=Type.choices, default=Type.CHESS)
     mode = models.CharField(max_length=12, choices=Mode.choices)
     status = models.CharField(max_length=15, choices=Status.choices, default=Status.WAITING)
     configuration = models.JSONField(default=dict, blank=True)
@@ -58,6 +62,7 @@ class GameInvitation(models.Model):
         EXPIRED = "expired", "Expirée"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    game_type = models.CharField(max_length=30, choices=Game.Type.choices, default=Game.Type.CHESS)
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="game_invitations_sent")
     recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="game_invitations_received")
     configuration = models.JSONField(default=dict)
@@ -69,4 +74,3 @@ class GameInvitation(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=("recipient", "status", "expires_at"))]
-

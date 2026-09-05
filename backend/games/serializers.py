@@ -35,7 +35,7 @@ class InvitationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = GameInvitation
-        fields = ("id", "sender", "recipient", "recipient_id", "configuration", "status", "expires_at", "game_id", "created_at")
+        fields = ("id", "sender", "recipient", "recipient_id", "game_type", "configuration", "status", "expires_at", "game_id", "created_at")
         read_only_fields = ("status", "expires_at")
 
     def create(self, validated_data):

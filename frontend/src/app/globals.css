@@ -152,6 +152,53 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .list-row .grow { flex: 1; }
 .search-form { display: flex; gap: 10px; margin-bottom: 22px; }
 
+.games-menu-shell { max-width: 1120px; }
+.games-menu { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.game-menu-card { min-height: 430px; padding: 30px; display: grid; grid-template-rows: 150px auto auto; gap: 20px; overflow: hidden; position: relative; }
+.game-menu-card h2 { font-size: 34px; margin-bottom: 10px; }
+.game-menu-card p { color: var(--muted); line-height: 1.6; }
+.game-menu-card.awale-card { background: linear-gradient(145deg, #fffdf8 45%, #ead5b6); }
+.game-menu-card.chess-card { background: linear-gradient(145deg, #fffdf8 45%, #dfe9e3); }
+.game-menu-symbol { height: 140px; display: grid; place-items: center; font-size: 132px; line-height: 1; color: var(--green); }
+.game-menu-symbol.seeds { grid-template-columns: repeat(2, 54px); align-content: center; justify-content: center; gap: 8px; }
+.game-menu-symbol.seeds i { width: 50px; height: 38px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #cf9f56, #704527 72%); transform: rotate(-18deg); box-shadow: inset -5px -6px 8px rgba(45, 26, 14, .25); }
+.game-menu-actions { display: flex; flex-wrap: wrap; gap: 9px; align-self: end; }
+.game-choice-inline { padding: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.game-choice-inline button { min-height: 54px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: inherit; font-weight: 600; }
+.game-choice-inline button.active { color: white; background: var(--green); }
+.game-choice-inline button span { margin-right: 5px; font-size: 22px; }
+
+.awale-game-layout { grid-template-columns: minmax(0, 1.65fr) minmax(300px, .68fr) !important; }
+.awale-board-column { min-width: 0; gap: 8px; }
+.awale-board-wrap { position: relative; width: 100%; }
+.awale-board { width: 100%; padding: clamp(12px, 2vw, 24px); display: grid; gap: clamp(8px, 1.4vw, 16px); border: 5px solid #6f452d; border-radius: 42px; background: linear-gradient(120deg, #a8764d, #8a5a38 48%, #a9764c); box-shadow: inset 0 0 0 2px rgba(255,255,255,.13), inset 0 10px 25px rgba(255,255,255,.08), 0 15px 30px rgba(62,39,23,.18); }
+.awale-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: clamp(6px, 1.2vw, 14px); }
+.awale-pit { min-width: 0; aspect-ratio: 1.16; position: relative; display: grid; place-items: center; padding: 5px; border: 2px solid rgba(69,39,23,.6); border-radius: 50%; color: #fff9ed; background: radial-gradient(ellipse at 48% 44%, #6c4129 8%, #4c2d1f 75%); box-shadow: inset 0 8px 16px rgba(20,10,5,.46), 0 2px 1px rgba(255,255,255,.13); cursor: default; }
+.awale-pit.legal { cursor: pointer; border-color: #f2cb70; box-shadow: inset 0 8px 16px rgba(20,10,5,.46), 0 0 0 3px rgba(242,203,112,.55); }
+.awale-pit.legal:hover { transform: translateY(-2px); }
+.awale-pit.last { outline: 4px solid var(--green); outline-offset: 2px; }
+.awale-pit strong { z-index: 2; font-size: clamp(17px, 2.2vw, 27px); text-shadow: 0 1px 3px #2a160e; }
+.awale-pit small { position: absolute; right: 10%; bottom: 7%; z-index: 2; color: #d9c4ad; font-size: 10px; }
+.seed-dots { position: absolute; inset: 15%; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 2px; opacity: .58; }
+.seed-dots i { width: clamp(6px, .8vw, 11px); height: clamp(5px, .65vw, 9px); border-radius: 50%; background: #d7a55d; transform: rotate(-20deg); }
+.animated .awale-pit.last { animation: pitPulse .55s ease-out; }
+@keyframes pitPulse { 50% { transform: scale(1.04); } }
+.awale-scores { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.awale-scores > div { min-height: 62px; padding: 9px 14px; display: grid; grid-template-columns: 1fr auto; align-items: center; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.awale-scores > div.active { border-color: var(--green); box-shadow: inset 3px 0 var(--green); }
+.awale-scores strong { grid-row: span 2; font-family: "Libre Baskerville", serif; font-size: 28px; color: var(--wood); }
+.awale-scores small { color: var(--muted); }
+.awale-feedback { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 12px; border-radius: 9px; background: #efe8db; color: #57463a; font-size: 14px; }
+.awale-feedback .btn { min-height: 32px; padding: 4px 8px; font-size: 12px; }
+.awale-history { list-style: none; padding: 0 6px 0 0; margin: 0; overflow-y: auto; }
+.awale-history li { border-bottom: 1px solid var(--border); }
+.awale-history li button { width: 100%; padding: 10px 4px; display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; border: 0; border-radius: 7px; text-align: left; color: var(--ink); background: transparent; }
+.awale-history li button:hover, .awale-history li button.active { background: #f2eadf; }
+.awale-history li span { color: var(--muted); font-size: 13px; }
+.awale-history li small { grid-column: 1 / -1; color: var(--green); }
+.awale-lesson-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(320px, .75fr); gap: 24px; align-items: start; }
+.awale-lesson-board { padding: 24px; }
+
 @media (max-width: 900px) {
   .shell { width: min(100% - 28px, 760px); }
   .header { height: auto; }
@@ -186,6 +233,19 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .game-chat-backdrop { display: block; position: fixed; z-index: 51; inset: 0; padding: 0; border: 0; background: rgba(45, 36, 30, .5); }
   .mobile-chat-button { position: fixed; z-index: 49; right: max(16px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); width: 58px; height: 58px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; color: white; background: var(--green); box-shadow: 0 8px 24px rgba(36, 71, 55, .34); }
   body.chat-drawer-open { overflow: hidden; }
+  .games-menu { grid-template-columns: 1fr; }
+  .game-menu-card { min-height: 360px; }
+  .awale-game-layout { display: block !important; }
+  .awale-game-main .game-heading h1 { font-size: 19px; }
+  .awale-board { padding: 10px; gap: 7px; border-width: 3px; border-radius: 24px; }
+  .awale-row { gap: 5px; }
+  .awale-pit { border-width: 1px; }
+  .awale-pit.last { outline-width: 2px; outline-offset: 1px; }
+  .awale-scores > div { min-height: 49px; padding: 5px 9px; font-size: 12px; }
+  .awale-scores strong { font-size: 22px; }
+  .awale-scores small { font-size: 10px; }
+  .awale-feedback { font-size: 12px; min-height: 36px; }
+  .awale-lesson-layout { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 520px) {
@@ -196,4 +256,10 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .lesson-panel, .side-panel, .friends-panel, .list-card { padding: 18px; }
   .search-form { display: grid; }
   .board-wrap { width: min(100%, 78dvh); }
+  .game-menu-card { padding: 22px; }
+  .game-menu-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .game-menu-actions .btn.ghost { grid-column: 1 / -1; }
+  .awale-pit small { display: none; }
+  .awale-feedback .btn { max-width: 110px; }
+  .awale-lesson-board { padding: 10px; }
 }

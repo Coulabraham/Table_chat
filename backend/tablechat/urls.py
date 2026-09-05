@@ -8,5 +8,5 @@ urlpatterns = [
     path("api/games/", include("games.urls")),
     path("api/chat/", include("chat.urls")),
     path("api/chess/", include("chess_game.urls")),
+    path("api/awale/", include("awale.urls")),
 ]
-

@@ -26,6 +26,8 @@ class ProcessedMove(models.Model):
 
 
 class Lesson(models.Model):
+    game_type = models.CharField(max_length=30, choices=[("chess", "Échecs"), ("awale", "Awalé")], default="chess")
+    content = models.JSONField(default=dict, blank=True)
     title = models.CharField(max_length=120)
     instruction = models.CharField(max_length=300)
     initial_fen = models.CharField(max_length=100)
