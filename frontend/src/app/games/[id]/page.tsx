@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Chess } from "chess.js";
+import { MessageCircle, X } from "lucide-react";
 import { AuthGuard } from "@/components/AuthGuard";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ChessBoard } from "@/components/ChessBoard";
@@ -10,6 +11,7 @@ import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useAuth } from "@/context/AuthContext";
 import { api, wsUrl } from "@/lib/api";
+import { createClientId } from "@/lib/clientId";
 import type { ChessState, User } from "@/lib/types";
 
 type Game = { id: string; mode: "human" | "ai"; status: string; configuration: { color?: "white" | "black"; level?: string; draw_offered_by?: number }; result: string; end_reason: string; conversation_id: string | null; participants: { user: User; role: "white" | "black" }[] };
@@ -32,6 +34,7 @@ function GameContent() {
   const [state, setState] = useState<ChessState | null>(null);
   const [connected, setConnected] = useState(false);
   const [tab, setTab] = useState<"chat" | "moves">("chat");
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [error, setError] = useState("");
   const [thinking, setThinking] = useState(false);
   const socket = useRef<WebSocket | null>(null);
@@ -50,6 +53,18 @@ function GameContent() {
     };
     connect(); return () => { active = false; if (retry) clearTimeout(retry); socket.current?.close(); };
   }, [id]);
+
+  useEffect(() => {
+    document.body.classList.toggle("chat-drawer-open", mobileChatOpen);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileChatOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.classList.remove("chat-drawer-open");
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [mobileChatOpen]);
 
   const participant = game?.participants.find((item) => item.user.id === user?.id);
   const opponent = game?.participants.find((item) => item.user.id !== user?.id)?.user;
@@ -77,9 +92,9 @@ function GameContent() {
     if (!state || !participant || turn !== participant.role || state.status !== "in_progress") return false;
     if (game?.mode === "human") {
       if (socket.current?.readyState !== WebSocket.OPEN) { setError("Connexion perdue : le coup n’a pas été envoyé."); return false; }
-      socket.current.send(JSON.stringify({ type: "game.move", uci, revision: state.revision, request_id: crypto.randomUUID() }));
+      socket.current.send(JSON.stringify({ type: "game.move", uci, revision: state.revision, request_id: createClientId() }));
     } else {
-      try { setState(await api<ChessState>(`/chess/games/${id}/moves/`, { method: "POST", body: JSON.stringify({ uci, revision: state.revision, request_id: crypto.randomUUID() }) })); }
+      try { setState(await api<ChessState>(`/chess/games/${id}/moves/`, { method: "POST", body: JSON.stringify({ uci, revision: state.revision, request_id: createClientId() }) })); }
       catch (err) { setError(err instanceof Error ? err.message : "Coup refusé."); return false; }
     }
     return true;
@@ -91,7 +106,28 @@ function GameContent() {
   const endReason = reasonLabels[state.end_reason] ?? state.end_reason;
   const resultLabel = state.result === "1-0" ? "Les Blancs gagnent" : state.result === "0-1" ? "Les Noirs gagnent" : state.result === "1/2-1/2" ? "Partie nulle" : state.result;
   const statusText = state.status === "finished" ? `${resultLabel} · ${endReason}` : thinking ? "L’IA réfléchit…" : turn === participant.role ? "À vous de jouer" : "À votre adversaire";
-  return <main className="main"><div className="shell"><div className="breadcrumb">Jouer / {game.mode === "human" ? "Partie entre amis" : "Entraînement contre l’IA"}</div><div className="page-heading" style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}><h1>{game.mode === "human" ? `Votre partie avec ${opponent?.display_name ?? "un ami"}` : "Votre partie d’entraînement"}</h1><ConnectionStatus connected={connected} /></div>{error && <div className="connection-banner">{error}</div>}<div className="game-layout"><div className="board-column"><div className="player-strip"><div className="player"><UserAvatar name={opponent?.display_name ?? "TableChat IA"} /><div><strong>{opponent?.display_name ?? "TableChat IA"}</strong><br /><small>{participant.role === "white" ? "Noirs" : "Blancs"}</small></div></div></div><div className="board-wrap"><ChessBoard fen={state.fen} orientation={participant.role} onMove={move} disabled={thinking || state.status !== "in_progress"} lastMove={state.moves.at(-1)?.uci} />{state.status === "finished" && <div className="game-over-overlay" role="dialog" aria-label="Partie terminée"><div className="card game-over-card"><p className="eyebrow">Partie terminée</p><h2>{endReason || "Fin de la partie"}</h2><p>{resultLabel}</p><button className="btn primary" style={{ marginTop: 14 }} onClick={() => window.location.href = "/"}>Retour à l’accueil</button></div></div>}</div><div className="player-strip"><div className="player"><UserAvatar name={user.display_name} /><div><strong>Vous</strong><br /><small>{participant.role === "white" ? "Blancs" : "Noirs"}</small></div></div><span className="status">{statusText}</span></div><div className="game-actions"><button className="btn" disabled={state.status !== "in_progress"} onClick={() => finish("draw")}>Proposer la nulle</button><button className="btn danger" disabled={state.status !== "in_progress"} onClick={() => finish("resign")}>Abandonner</button></div></div><aside><div className="tabs"><button className={`tab ${tab === "chat" ? "active" : ""}`} onClick={() => setTab("chat")}>Discussion</button><button className={`tab ${tab === "moves" ? "active" : ""}`} onClick={() => setTab("moves")}>Coups</button></div>{tab === "chat" ? (game.conversation_id ? <ChatPanel conversationId={game.conversation_id} currentUserId={user.id} /> : <div className="card empty">Le chat est disponible dans les parties entre amis.</div>) : <section className="card side-panel"><h2>Historique</h2>{state.moves.length ? <ol className="moves-list">{state.moves.map((item) => <li key={item.ply}>{item.san}</li>)}</ol> : <div className="empty">Aucun coup joué.</div>}<button className="btn" onClick={() => navigator.clipboard.writeText(state.pgn)}>Copier le PGN</button>{chess.inCheck() && state.status !== "finished" && <div className="feedback wrong">Le roi est en échec.</div>}</section>}</aside></div></div></main>;
+  return <main className="main game-main"><div className="shell game-shell">
+    <div className="game-heading">
+      <div><div className="breadcrumb">Jouer / {game.mode === "human" ? "Partie entre amis" : "Entraînement contre l’IA"}</div><h1>{game.mode === "human" ? `Partie avec ${opponent?.display_name ?? "un ami"}` : "Partie d’entraînement"}</h1></div>
+      <ConnectionStatus connected={connected} />
+    </div>
+    {error && <div className="connection-banner">{error}</div>}
+    <div className="game-layout">
+      <div className="board-column">
+        <div className="player-strip"><div className="player"><UserAvatar name={opponent?.display_name ?? "TableChat IA"} /><div><strong>{opponent?.display_name ?? "TableChat IA"}</strong><br /><small>{participant.role === "white" ? "Noirs" : "Blancs"}</small></div></div></div>
+        <div className="board-wrap"><ChessBoard fen={state.fen} orientation={participant.role} onMove={move} disabled={thinking || state.status !== "in_progress"} lastMove={state.moves.at(-1)?.uci} />{state.status === "finished" && <div className="game-over-overlay" role="dialog" aria-label="Partie terminée"><div className="card game-over-card"><p className="eyebrow">Partie terminée</p><h2>{endReason || "Fin de la partie"}</h2><p>{resultLabel}</p><button className="btn primary" style={{ marginTop: 14 }} onClick={() => window.location.href = "/"}>Retour à l’accueil</button></div></div>}</div>
+        <div className="player-strip"><div className="player"><UserAvatar name={user.display_name} /><div><strong>Vous</strong><br /><small>{participant.role === "white" ? "Blancs" : "Noirs"}</small></div></div><span className="status">{statusText}</span></div>
+        <div className="game-actions"><button className="btn" disabled={state.status !== "in_progress"} onClick={() => finish("draw")}>Proposer la nulle</button><button className="btn danger" disabled={state.status !== "in_progress"} onClick={() => finish("resign")}>Abandonner</button></div>
+      </div>
+      <aside className={`card game-sidebar ${mobileChatOpen ? "open" : ""}`} aria-label="Panneau de partie">
+        <div className="game-sidebar-mobile-header"><strong>Conversation</strong><button className="icon-button" onClick={() => setMobileChatOpen(false)} aria-label="Fermer le chat"><X size={22} /></button></div>
+        <div className="tabs"><button className={`tab ${tab === "chat" ? "active" : ""}`} onClick={() => setTab("chat")}>Discussion</button><button className={`tab ${tab === "moves" ? "active" : ""}`} onClick={() => setTab("moves")}>Coups</button></div>
+        {tab === "chat" ? (game.conversation_id ? <ChatPanel conversationId={game.conversation_id} currentUserId={user.id} embedded /> : <div className="empty">Le chat est disponible dans les parties entre amis.</div>) : <section className="side-panel embedded-panel"><h2>Historique</h2>{state.moves.length ? <ol className="moves-list">{state.moves.map((item) => <li key={item.ply}>{item.san}</li>)}</ol> : <div className="empty">Aucun coup joué.</div>}<button className="btn" onClick={() => navigator.clipboard.writeText(state.pgn)}>Copier le PGN</button>{chess.inCheck() && state.status !== "finished" && <div className="feedback wrong">Le roi est en échec.</div>}</section>}
+      </aside>
+    </div>
+    {mobileChatOpen && <button className="game-chat-backdrop" onClick={() => setMobileChatOpen(false)} aria-label="Fermer le chat" />}
+    {game.mode === "human" && game.conversation_id && <button className="mobile-chat-button" onClick={() => { setTab("chat"); setMobileChatOpen(true); }} aria-label="Ouvrir la conversation"><MessageCircle size={26} /></button>}
+  </div></main>;
 }
 
 export default function GamePage() { return <AuthGuard><GameContent /></AuthGuard>; }

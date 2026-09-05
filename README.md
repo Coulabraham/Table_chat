@@ -93,7 +93,15 @@ Pour un coup multijoueur, le serveur verrouille la ligne `ChessState`, revérifi
 4. Les deux navigateurs sont redirigés vers la même partie. Jouer un coup puis actualiser l’autre fenêtre pour vérifier la reprise complète.
 5. Couper brièvement le réseau : l’indicateur passe à « Reconnexion… » et aucun abandon automatique n’est déclenché.
 
-Pour deux appareils du même réseau, remplacer `localhost` par l’adresse LAN de la machine hôte dans `NEXT_PUBLIC_API_URL` et `NEXT_PUBLIC_WS_URL`, ajouter cette adresse à `DJANGO_ALLOWED_HOSTS` et `http://<adresse>:3000` à `CORS_ALLOWED_ORIGINS`, puis reconstruire le frontend. Les deux appareils ouvrent ensuite `http://<adresse>:3000`.
+Pour deux appareils du même réseau, le frontend utilise automatiquement le nom d’hôte depuis lequel il est ouvert. Django doit néanmoins écouter sur `0.0.0.0` et autoriser l’adresse ainsi que l’origine LAN.
+
+Sous Windows, le script suivant détecte automatiquement l’adresse du réseau principal, configure Django/CSRF/CORS, écoute sur toutes les interfaces et lance les deux services :
+
+```powershell
+.\scripts\start-lan.ps1
+```
+
+Une adresse peut aussi être imposée : `.\scripts\start-lan.ps1 -LanAddress 192.168.1.11`. Le téléphone et l’ordinateur doivent être sur le même Wi‑Fi. Si Windows affiche une demande de pare-feu, autoriser Python et Node.js uniquement sur les réseaux privés.
 
 ## Tests et vérifications
 

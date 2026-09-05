@@ -1,5 +1,7 @@
 import random
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -113,6 +115,19 @@ class InvitationActionView(APIView):
             ])
             invitation.game = game
             invitation.status = GameInvitation.Status.ACCEPTED
+            payload = {
+                "type": "game.ready",
+                "game_id": str(game.id),
+                "invitation_id": str(invitation.id),
+            }
+            participant_ids = (invitation.sender_id, invitation.recipient_id)
+
+            def notify_participants():
+                channel_layer = get_channel_layer()
+                for user_id in participant_ids:
+                    async_to_sync(channel_layer.group_send)(f"user_{user_id}", {"type": "game_ready", "payload": payload})
+
+            transaction.on_commit(notify_participants)
         elif action in {"decline", "cancel"}:
             expected = invitation.recipient if action == "decline" else invitation.sender
             if request.user != expected:

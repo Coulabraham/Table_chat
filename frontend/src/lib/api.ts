@@ -1,4 +1,8 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+function apiBaseUrl() {
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+  if (typeof window !== "undefined") return `${window.location.protocol}//${window.location.hostname}:8000/api`;
+  return "http://localhost:8000/api";
+}
 
 function cookie(name: string) {
   if (typeof document === "undefined") return "";
@@ -10,7 +14,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   if (options.body) headers.set("Content-Type", "application/json");
   const csrf = cookie("csrftoken");
   if (csrf) headers.set("X-CSRFToken", decodeURIComponent(csrf));
-  const response = await fetch(`${API_URL}${path}`, { ...options, headers, credentials: "include" });
+  const response = await fetch(`${apiBaseUrl()}${path}`, { ...options, headers, credentials: "include" });
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
     throw new Error(payload?.detail ?? Object.values(payload ?? {})[0] ?? "Une erreur est survenue.");
@@ -22,5 +26,11 @@ export async function ensureCsrf() {
   return api<{ csrfToken: string }>("/auth/csrf/");
 }
 
-export const wsUrl = (path: string) => `${process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000/ws"}${path}`;
-
+export function wsUrl(path: string) {
+  if (process.env.NEXT_PUBLIC_WS_URL) return `${process.env.NEXT_PUBLIC_WS_URL}${path}`;
+  if (typeof window !== "undefined") {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${window.location.hostname}:8000/ws${path}`;
+  }
+  return `ws://localhost:8000/ws${path}`;
+}

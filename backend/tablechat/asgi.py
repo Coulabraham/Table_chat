@@ -11,8 +11,9 @@ django_asgi_application = get_asgi_application()
 
 from chat.routing import websocket_urlpatterns as chat_patterns
 from chess_game.routing import websocket_urlpatterns as game_patterns
+from games.routing import websocket_urlpatterns as notification_patterns
 
 application = ProtocolTypeRouter({
     "http": django_asgi_application,
-    "websocket": AllowedHostsOriginValidator(AuthMiddlewareStack(URLRouter(game_patterns + chat_patterns))),
+    "websocket": AllowedHostsOriginValidator(AuthMiddlewareStack(URLRouter(game_patterns + chat_patterns + notification_patterns))),
 })

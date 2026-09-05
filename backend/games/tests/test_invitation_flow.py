@@ -29,3 +29,8 @@ def test_friends_can_accept_an_invitation_and_get_a_complete_game():
     assert ChessState.objects.filter(game=game, revision=0).exists()
     conversation = Conversation.objects.get(game=game)
     assert conversation.memberships.count() == 2
+
+    client.force_authenticate(alice)
+    assert client.get(f"/api/games/{game.id}/").status_code == 200
+    client.force_authenticate(camille)
+    assert client.get(f"/api/games/{game.id}/").status_code == 200

@@ -8,7 +8,7 @@ load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-change-me")
 DEBUG = os.getenv("DJANGO_DEBUG", "true").lower() == "true"
-ALLOWED_HOSTS = [item.strip() for item in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")]
+ALLOWED_HOSTS = [item.strip() for item in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if item.strip()]
 
 INSTALLED_APPS = [
     "daphne",
@@ -110,4 +110,3 @@ CELERY_BEAT_SCHEDULE = {
     "expire-game-invitations": {"task": "games.tasks.expire_invitations", "schedule": 60.0},
 }
 STOCKFISH_PATH = os.getenv("STOCKFISH_PATH", "stockfish")
-
