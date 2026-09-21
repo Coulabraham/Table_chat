@@ -1,12 +1,10 @@
-FROM node:22-alpine AS deps
+FROM node:24-alpine AS build
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
-FROM node:22-alpine
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+COPY package.json package-lock.json* ./
+RUN npm ci
 COPY . .
 RUN npm run build
-EXPOSE 3000
-CMD ["npm", "start"]
 
+FROM nginx:1.29-alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf

@@ -1,52 +1,82 @@
+name: tablechat
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:17.6-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-tablechat}
       POSTGRES_USER: ${POSTGRES_USER:-tablechat}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tablechat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tablechat}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tablechat} -d ${POSTGRES_DB:-tablechat}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   redis:
-    image: redis:7.4-alpine
-    command: redis-server --appendonly yes
+    image: redis:8.2-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   backend:
     build: ./backend
-    env_file: ./backend/.env
-    ports: ["8000:8000"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DJANGO_SETTINGS_MODULE: tablechat.settings.production
+    command: sh -c "python manage.py migrate --noinput && daphne -b 0.0.0.0 -p 8000 tablechat.asgi:application"
     depends_on:
-      db: { condition: service_healthy }
-      redis: { condition: service_started }
-    command: sh -c "python manage.py migrate && daphne -b 0.0.0.0 -p 8000 tablechat.asgi:application"
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.Request('http://127.0.0.1:8000/api/health/', headers={'X-Forwarded-Proto':'https'}); urllib.request.urlopen(r, timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
 
-  celery:
+  event-worker:
     build: ./backend
-    env_file: ./backend/.env
-    depends_on: [db, redis]
-    command: celery -A tablechat worker -l info --concurrency=2
-
-  celery-beat:
-    build: ./backend
-    env_file: ./backend/.env
-    depends_on: [db, redis]
-    command: celery -A tablechat beat -l info
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DJANGO_SETTINGS_MODULE: tablechat.settings.production
+    command: python manage.py retry_pending_events --watch
+    depends_on:
+      backend: {condition: service_healthy}
 
   frontend:
     build: ./frontend
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
     environment:
-      BACKEND_INTERNAL_URL: http://backend:8000
-    ports: ["3000:3000"]
-    depends_on: [backend]
+      SITE_ADDRESS: ${SITE_ADDRESS:-https://localhost}
+      SITE_HOST: ${SITE_HOST:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend: {condition: service_healthy}
+      frontend: {condition: service_started}
 
 volumes:
   postgres_data:
   redis_data:
+  caddy_data:
+  caddy_config:

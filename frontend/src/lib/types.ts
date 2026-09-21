@@ -1,7 +1,0 @@
-export type User = { id: number; display_name: string; chess_level: string; created_at: string };
-export type Move = { ply: number; uci: string; san: string };
-export type ChessState = { game_id: string; fen: string; initial_fen: string; moves: Move[]; pgn: string; revision: number; status: string; result: string; end_reason: string };
-export type LessonSession = { fen: string; current_ply: number; completed: boolean; attempts: number; hint_stage: number; coach_message: string; can_undo: boolean };
-export type Lesson = { id: number; title: string; instruction: string; initial_fen: string; side_to_move: "white" | "black"; objective: string; difficulty: string; hints: string[]; explanation: string; coach_messages: Record<string, string>; order: number; progress: LessonSession | null; next_lesson_id: number | null };
-export type AwaleMove = { move_number: number; player: 0 | 1; pit: number; path: number[]; captures: number[]; capture_cancelled: boolean; author: string; state_after: { pits: number[]; scores: [number, number]; current_player: 0 | 1; revision: number } };
-export type AwaleState = { game_id: string; ruleset: "abapa_tablechat_v1"; pits: number[]; scores: [number, number]; current_player: 0 | 1; revision: number; last_move: { pit?: number; path?: number[]; captures?: number[]; capture_cancelled?: boolean; captured_seeds?: number }; legal_moves: number[]; history: AwaleMove[]; status: string; result: string; end_reason: string };

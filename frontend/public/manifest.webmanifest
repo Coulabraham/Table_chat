@@ -1,0 +1,9 @@
+{
+  "name": "Table Chat",
+  "short_name": "Table Chat",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f8fc",
+  "theme_color": "#1689e6",
+  "icons": [{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}

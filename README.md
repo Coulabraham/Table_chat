@@ -1,164 +1,124 @@
-# TableChat — V1
+# Table Chat
 
-TableChat est une application web française de jeux de société entre amis. Elle propose les Échecs et l’Awalé : comptes, amis, invitations privées, parties serveur autoritaires, adversaires IA, chat persistant et leçons interactives.
+Prototype fonctionnel de messagerie privée pour essais privés. Deux utilisateurs peuvent créer un compte, se retrouver par identifiant public et échanger des messages persistants en temps réel. PostgreSQL est la source de vérité ; Redis transporte les événements WebSocket.
 
-## Architecture retenue
+> Important : cette version n’utilise pas de chiffrement de bout en bout. Le serveur peut lire les messages. La vérification d’email et la récupération de mot de passe ne sont pas implémentées ; ne pas ouvrir ce prototype au public.
 
-- `frontend/` : Next.js 15 App Router, React 19, TypeScript strict, `react-chessboard` et `chess.js`.
-- `backend/` : Django 5.1, Django REST Framework, Channels/ASGI et Celery.
-- PostgreSQL : source de vérité pour comptes, relations, parties, messages et progression.
-- Redis : couche Channels et broker Celery, jamais stockage métier unique.
-- `games` reste générique (type de jeu, partie, participants, invitation) ; `chess_game` contient les règles et états d’échecs, tandis que `awale` possède son propre moteur Abapa, son état persistant et son IA alpha-bêta.
+## Démarrage recommandé avec Docker
 
-Les sessions Django avec cookie HttpOnly sont utilisées. Le frontend récupère d’abord un cookie CSRF via `GET /api/auth/csrf/`, envoie `X-CSRFToken` pour toute mutation et inclut les cookies dans les appels HTTP. Les WebSockets réutilisent le cookie de session via `AuthMiddlewareStack` et vérifient l’appartenance à la partie ou à la conversation avant d’accepter la connexion.
+Prérequis : Docker Desktop avec Compose, ports 80 et 443 libres.
 
-## Démarrage Docker (recommandé)
-
-Prérequis : Docker Desktop et Docker Compose.
+1. Copier `.env.example` vers `.env`.
+2. Remplacer `DJANGO_SECRET_KEY` et `POSTGRES_PASSWORD` par des valeurs aléatoires fortes.
+3. Pour un seul ordinateur, conserver `SITE_ADDRESS=https://localhost`.
+4. Lancer :
 
 ```powershell
-Copy-Item backend/.env.example backend/.env
-Copy-Item .env.example .env
-docker compose up --build
-docker compose exec backend python manage.py seed_demo
+docker compose up --build -d
+docker compose ps
 ```
 
-Ouvrir `http://localhost:3000`. Deux comptes de démonstration sont créés :
+Ouvrir `https://localhost`. Caddy produit un certificat local ; le navigateur demandera de faire confiance à son autorité locale. L’API (`/api`) et les WebSockets (`/ws`) partagent exactement la même origine que le frontend.
 
-- `alice@tablechat.local` / `TableChat123!`
-- `camille@tablechat.local` / `TableChat123!`
+Arrêt sans supprimer les données :
 
-Le seed est idempotent et crée aussi leur amitié, une conversation avec message et cinq leçons.
+```powershell
+docker compose down
+```
 
-## Démarrage local sans Docker
+Redémarrage, les comptes et messages étant conservés dans le volume PostgreSQL :
 
-Le mode local utilise SQLite si `POSTGRES_HOST` n’est pas défini. PostgreSQL demeure le stockage de production et du Compose.
+```powershell
+docker compose up -d
+```
+
+Ne lancer `docker compose down -v` que si la suppression définitive de la base de développement est souhaitée.
+
+## Utilisation sur ordinateur et téléphone
+
+Les deux appareils doivent être sur le même réseau privé. Aucun port PostgreSQL ou Redis n’est publié.
+
+1. Trouver l’adresse IPv4 LAN de l’ordinateur avec `ipconfig`, par exemple `192.168.1.42`.
+2. Dans `.env`, régler exactement :
+
+```dotenv
+SITE_ADDRESS=https://192.168.1.42
+DJANGO_ALLOWED_HOSTS=192.168.1.42,localhost,127.0.0.1
+CSRF_TRUSTED_ORIGINS=https://192.168.1.42
+```
+
+3. Relancer `docker compose up --build -d`.
+4. Autoriser les ports TCP 80/443 dans le pare-feu uniquement pour le profil réseau privé.
+5. Exporter l’autorité locale de Caddy :
+
+```powershell
+docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt .\infra\tablechat-local-ca.crt
+```
+
+6. Installer ce certificat comme autorité de confiance sur les deux appareils de test. Ne jamais distribuer sa clé privée. Sur iPhone, activer ensuite la confiance complète dans *Réglages > Général > Informations > Réglages des certificats* ; sur Android, installer le certificat CA utilisateur selon la version du système.
+7. Ouvrir `https://192.168.1.42` sur les deux appareils. Ne pas utiliser `localhost` sur le téléphone.
+
+Si l’installation d’une CA locale est interdite par la politique de l’appareil, utiliser deux contextes de navigateur isolés sur l’ordinateur pour la recette automatisée. Ne pas contourner TLS ni désactiver CSRF/origines autorisées.
+
+## Développement sans Docker
+
+Cette voie sert au développement local sur un seul ordinateur. SQLite et le canal mémoire du réglage de test ne remplacent pas PostgreSQL/Redis pour une recette de déploiement.
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r backend/requirements.txt
-Copy-Item backend/.env.example backend/.env
-$env:USE_INMEMORY_CHANNELS="true"
+.\.venv\Scripts\python.exe -m pip install -c .\backend\constraints.txt -r .\backend\requirements-dev.txt
+$env:DJANGO_SETTINGS_MODULE="tablechat.settings.test"
+.\.venv\Scripts\python.exe .\backend\manage.py migrate
 cd backend
-python manage.py migrate
-python manage.py seed_demo
-daphne -b 127.0.0.1 -p 8000 tablechat.asgi:application
+..\.venv\Scripts\python.exe -m daphne -b 127.0.0.1 -p 8000 tablechat.asgi:application
 ```
 
 Dans un second terminal :
 
 ```powershell
 cd frontend
-Copy-Item .env.example .env.local
 npm ci
 npm run dev
 ```
 
-Les fichiers Stockfish navigateur sont déjà présents dans `frontend/public/stockfish/`. Pour les régénérer depuis le paquet verrouillé :
+Ouvrir `http://127.0.0.1:5173`.
 
-```powershell
-Copy-Item node_modules/stockfish/src/stockfish-nnue-16-single.js public/stockfish/stockfish.js
-Copy-Item node_modules/stockfish/src/stockfish-nnue-16-single.wasm public/stockfish/stockfish-nnue-16-single.wasm
-```
-
-Le binaire Stockfish serveur est installé automatiquement par le Dockerfile Debian (`apt install stockfish`). Hors Docker, installer Stockfish puis renseigner son chemin dans `STOCKFISH_PATH`. Les niveaux `Découverte` et `Club` utilisent le moteur WebAssembly dans un Web Worker ; en cas d’indisponibilité, le serveur prend le relais. `Confirmé` et `Expert` utilisent le binaire serveur avec temps, profondeur, hash et threads bornés. Ces noms ne représentent pas un Elo officiel.
-
-## Routes HTTP principales
-
-| Domaine | Routes |
-|---|---|
-| Auth | `GET csrf/`, `POST register/`, `POST login/`, `POST logout/`, `GET/PATCH me/`, `GET users/?q=` |
-| Amis | `GET/POST /api/friends/`, `POST /api/friends/<id>/{accept,decline,cancel,remove}/` |
-| Parties | `GET/POST /api/games/`, `GET /api/games/<id>/`, `POST /api/games/<id>/{resign,draw}/` |
-| Invitations | `GET/POST /api/games/invitations/`, `POST .../<id>/{accept,decline,cancel}/` |
-| Échecs | `GET .../games/<id>/state/`, `POST .../moves/`, `POST .../ai-turn/`, `POST .../engine/` |
-| Awalé | `GET /api/awale/games/<id>/state/`, `POST .../moves/`, `POST .../ai-turn/` |
-| Chat | `GET/POST conversations/`, `GET/POST .../messages/`, `POST .../read/` |
-| Leçons | `GET lessons/`, `GET lessons/<id>/`, `POST lessons/<id>/{start,attempt,hint,undo}/` |
-
-Toutes les routes sont préfixées par `/api/`. Les listes et historiques sont paginés (30 éléments par défaut).
-
-## WebSockets
-
-- `/ws/games/<uuid>/` : le client reçoit `game.state`, envoie `game.move` avec `{uci, request_id, revision}` ou `game.sync`. Les erreurs arrivent via `game.error`.
-- `/ws/awale/games/<uuid>/` : le client reçoit `awale.state`, envoie `awale.move` avec `{pit, request_id, revision}` ou `awale.sync`.
-- `/ws/conversations/<uuid>/` : le client envoie/reçoit `chat.message` avec `{content, client_id}`. `client_id` déduplique les reprises ; la fréquence et la longueur sont bornées.
-
-Pour un coup multijoueur, le serveur verrouille la ligne `ChessState`, revérifie participant, statut, tour, révision et légalité avec `python-chess`, calcule SAN/FEN/PGN et fin de partie, incrémente la révision, persiste le tout puis diffuse l’état confirmé. Un FEN client n’est jamais accepté comme nouvel état.
-
-Pour l’Awalé, le serveur applique le règlement immuable `abapa_tablechat_v1` : semis avec saut du trou d’origine, captures en chaîne, annulation d’une capture affamant l’adversaire, obligation de nourrir, majorité à 25 graines, décompte final et troisième répétition TableChat. La somme plateau + scores est vérifiée à 48 graines à chaque transition.
-
-## Tester deux sessions
-
-1. Ouvrir Chrome sur `http://localhost:3000` et se connecter avec Alice.
-2. Ouvrir une fenêtre privée ou un autre navigateur et se connecter avec Camille.
-3. Dans **Amis**, inviter Camille depuis Alice ; accepter depuis Camille.
-4. Les deux navigateurs sont redirigés vers la même partie. Jouer un coup puis actualiser l’autre fenêtre pour vérifier la reprise complète.
-5. Couper brièvement le réseau : l’indicateur passe à « Reconnexion… » et aucun abandon automatique n’est déclenché.
-
-Pour deux appareils du même réseau, le frontend utilise automatiquement le nom d’hôte depuis lequel il est ouvert. Django doit néanmoins écouter sur `0.0.0.0` et autoriser l’adresse ainsi que l’origine LAN.
-
-Sous Windows, le script suivant détecte automatiquement l’adresse du réseau principal, configure Django/CSRF/CORS, écoute sur toutes les interfaces et lance les deux services :
-
-```powershell
-.\scripts\start-lan.ps1
-```
-
-Une adresse peut aussi être imposée : `.\scripts\start-lan.ps1 -LanAddress 192.168.1.11`. Le téléphone et l’ordinateur doivent être sur le même Wi‑Fi. Si Windows affiche une demande de pare-feu, autoriser Python et Node.js uniquement sur les réseaux privés.
-
-## Tests et vérifications
+## Tests et contrôles
 
 ```powershell
 cd backend
-$env:USE_INMEMORY_CHANNELS="true"
-..\.venv\Scripts\python -m pytest -q
-..\.venv\Scripts\python manage.py check
+..\.venv\Scripts\python.exe -m pytest -q
+..\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run
 
-cd ../frontend
+cd ..\frontend
+npm ci
 npm run build
+npm audit
+npx playwright install chromium
+$env:TABLECHAT_URL="https://localhost"
+npm run test:e2e -- --project=desktop
 ```
 
-Les tests ciblent la persistance/déduplication d’un coup légal, le refus des coups illégaux, hors-tour et tiers, le roque, la prise en passant, le mat, l’auto-ajout, les demandes d’amitié croisées et une leçon guidée complète. `python-chess` gère aussi promotion, pat, répétitions et nullités automatiques conformément à ses règles.
+Pour une recette locale autonome (SQLite + canal mémoire, ports 8001/5174), après les migrations : `npm run test:e2e:local`.
 
-## Pédagogie guidée
+Le test Playwright utilise deux contextes de navigateur indépendants. Il exige la pile Docker active. La procédure manuelle complète est dans [docs/RECETTE.md](docs/RECETTE.md).
+Le compte rendu factuel de cette livraison est dans [docs/VERIFICATIONS.md](docs/VERIFICATIONS.md).
 
-Le parcours reprend les principes d’un coach virtuel pas à pas, sans copier de contenu ou d’identité tiers :
+## Architecture
 
-- progression séquentielle avec leçon recommandée, états verrouillé/disponible/terminé ;
-- objectif annoncé et message du « maître du club » adapté après chaque coup ;
-- mauvais coup expliqué sans avancer la position ;
-- réponses adverses prévues jouées automatiquement dans les variantes à plusieurs coups ;
-- indices progressifs, du concept jusqu’au coup concret ;
-- reprise exacte de la position, retour au coup précédent et redémarrage complet ;
-- validation et progression persistées côté serveur.
+- `backend/accounts` : utilisateur, sessions, CSRF, authentification, profil, recherche exacte et limitation de débit.
+- `backend/chat` : conversations à deux participants, historique par curseur, messages idempotents, WebSocket et outbox de rattrapage.
+- `frontend` : React/TypeScript, TanStack Query, React Router et Tailwind ; navigation mobile/desktop, états d’envoi et reconnexion progressive.
+- `infra/Caddyfile` : terminaison HTTPS et origine unique.
+- `compose.yaml` : frontend, backend ASGI, worker d’événements, PostgreSQL, Redis et Caddy.
 
-## Tâches Celery et politique de nettoyage
+Les contrats HTTP et temps réel sont résumés dans [docs/API.md](docs/API.md). Les décisions de sécurité et limites sont dans [docs/SECURITE.md](docs/SECURITE.md).
 
-Celery Beat exécute chaque minute `games.tasks.expire_invitations`, qui marque comme expirées les invitations arrivées à échéance (24 h). Les parties, conversations et messages ne sont pas supprimés automatiquement. Toute future politique de rétention devra être explicite et ne devra jamais effacer l’historique à la suppression d’une amitié. Les analyses Stockfish différées ont une limite dure de 8 secondes et deux workers dans le Compose.
+## Limites avant ouverture publique
 
-## Maquettes et licences
-
-Les trois maquettes et leurs prompts sont dans [`docs/mockups`](docs/mockups/PROMPTS.md). La position fonctionnelle de la leçon est toujours dérivée de la FEN exacte, pas de l’image générée.
-
-- Django (BSD-3-Clause), DRF (BSD), Channels (BSD), Celery (BSD), `python-chess` (GPL-3.0), paquet Python `stockfish` (MIT).
-- Stockfish et Stockfish.js sont sous GPL-3.0. Le code source correspondant et les notices doivent rester distribués selon cette licence.
-- Next.js et React (MIT), `chess.js` (BSD-2-Clause), `react-chessboard` (MIT), Lucide (ISC).
-
-## Limites connues de la V1
-
-- Parties sans pendule, matchmaking public, tournoi, classement, spectateur, paiements et vocal/vidéo exclus volontairement.
-- La proposition de nulle repose sur une double confirmation via l’action `draw` ; l’interface affiche actuellement le même bouton aux deux joueurs sans notification dédiée.
-- La notification audio est un signal court activable après interaction ; aucune notification n’est garantie si l’onglet est suspendu ou fermé.
-- Le moteur serveur est appelé dans une requête HTTP bornée pour les coups IA. La tâche Celery est disponible pour les analyses pédagogiques longues.
-- Le build et les tests automatisés ont été exécutés. La vérification visuelle assistée par navigateur a été bloquée par le garde-fou de contrôle UI, incapable de confirmer l’URL active ; une passe manuelle aux formats ordinateur/tablette/mobile reste recommandée.
-- Le fichier Compose a été relu mais n’a pas pu être exécuté dans cet environnement, où la commande `docker` n’est pas installée.
-
-## Ordre de réalisation suivi
-
-1. Maquettes et tokens visuels.
-2. Environnement, modèles, sessions et migrations.
-3. Règles locales, état serveur et Stockfish hybride.
-4. Amitiés, invitations, multijoueur et resynchronisation.
-5. Conversations, messages, lecture et son.
-6. Leçons, responsive, seed, tests et documentation.
+- Pas de vérification d’email, récupération de mot de passe, suppression de compte ni gestion multi-session.
+- Pas d’E2EE : messages lisibles par le serveur et les administrateurs de l’infrastructure.
+- Pas de pièces jointes, groupes, appels, notifications Push, jeux ni paiements.
+- Le mécanisme d’outbox rediffuse les événements, mais une exploitation publique demanderait supervision, métriques, alertes, sauvegardes chiffrées/restaurations testées et tests de charge.
+- La limitation DRF utilise le cache configuré ; pour plusieurs réplicas publics, configurer un cache Redis dédié et une protection en bordure.
+- L’autorité TLS interne Caddy convient à un laboratoire privé, pas à un domaine public.

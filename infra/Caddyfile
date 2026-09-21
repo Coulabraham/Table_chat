@@ -1,0 +1,27 @@
+{
+    # Some clients omit SNI when connecting directly to an IP address.
+    # Select the configured LAN certificate for those TLS handshakes.
+    default_sni {$SITE_HOST:localhost}
+}
+
+{$SITE_ADDRESS:https://localhost} {
+    tls internal
+    encode zstd gzip
+
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+    handle /ws/* {
+        reverse_proxy backend:8000
+    }
+    handle {
+        reverse_proxy frontend:80
+    }
+
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy same-origin
+        X-Frame-Options DENY
+        -Server
+    }
+}

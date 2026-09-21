@@ -1,20 +1,22 @@
 import os
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "tablechat.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "tablechat.settings.development")
 
 from channels.auth import AuthMiddlewareStack
 from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.security.websocket import AllowedHostsOriginValidator
 from django.core.asgi import get_asgi_application
 
-django_asgi_application = get_asgi_application()
+django_asgi_app = get_asgi_application()
 
-from chat.routing import websocket_urlpatterns as chat_patterns
-from chess_game.routing import websocket_urlpatterns as game_patterns
-from games.routing import websocket_urlpatterns as notification_patterns
-from awale.routing import websocket_urlpatterns as awale_patterns
+from chat.routing import websocket_urlpatterns
 
-application = ProtocolTypeRouter({
-    "http": django_asgi_application,
-    "websocket": AllowedHostsOriginValidator(AuthMiddlewareStack(URLRouter(game_patterns + awale_patterns + chat_patterns + notification_patterns))),
-})
+application = ProtocolTypeRouter(
+    {
+        "http": django_asgi_app,
+        "websocket": AllowedHostsOriginValidator(
+            AuthMiddlewareStack(URLRouter(websocket_urlpatterns))
+        ),
+    }
+)
+

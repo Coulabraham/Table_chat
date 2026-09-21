@@ -1,31 +1,45 @@
 from rest_framework import serializers
-from accounts.serializers import UserSerializer
-from .models import Conversation, ConversationParticipant, Message
+
+from accounts.serializers import PublicUserSerializer
+from .models import Conversation, Message
 
 
 class MessageSerializer(serializers.ModelSerializer):
-    author = UserSerializer(read_only=True)
+    author_id = serializers.IntegerField(read_only=True)
+    server_sequence = serializers.IntegerField(source="id", read_only=True)
 
     class Meta:
         model = Message
-        fields = ("id", "author", "content", "client_id", "created_at")
-        read_only_fields = ("id", "created_at")
+        fields = ("id", "server_sequence", "conversation_id", "author_id", "client_id", "content", "created_at")
+        read_only_fields = fields
 
 
 class ConversationSerializer(serializers.ModelSerializer):
-    participants = serializers.SerializerMethodField()
-    unread_count = serializers.SerializerMethodField()
+    other_user = serializers.SerializerMethodField()
+    last_message = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
-        fields = ("id", "kind", "game_id", "participants", "unread_count", "created_at")
+        fields = ("id", "other_user", "last_message", "updated_at", "created_at")
 
-    def get_participants(self, obj):
-        return UserSerializer([item.user for item in obj.memberships.all()], many=True).data
+    def get_other_user(self, obj):
+        return PublicUserSerializer(obj.other_user(self.context["request"].user)).data
 
-    def get_unread_count(self, obj):
-        request = self.context.get("request")
-        membership = next((item for item in obj.memberships.all() if request and item.user_id == request.user.id), None)
-        messages = obj.messages.exclude(author=request.user) if request else obj.messages.none()
-        return messages.filter(created_at__gt=membership.last_read_at).count() if membership and membership.last_read_at else messages.count()
+    def get_last_message(self, obj):
+        message = obj.messages.order_by("-id").first()
+        return MessageSerializer(message).data if message else None
+
+
+class CreateMessageSerializer(serializers.Serializer):
+    client_id = serializers.UUIDField()
+    content = serializers.CharField(max_length=4000, trim_whitespace=False)
+
+    def validate_content(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Le message ne peut pas être vide.")
+        return value
+
+
+class CreateConversationSerializer(serializers.Serializer):
+    contact_public_id = serializers.CharField(max_length=32)
 
