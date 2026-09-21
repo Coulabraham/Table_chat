@@ -1,5 +1,6 @@
 import pytest
 from django.contrib.auth.hashers import identify_hasher
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import User
@@ -13,6 +14,7 @@ def test_register_login_profile_and_private_email():
     assert response.status_code == 201
     alice = User.objects.get(public_id="alice")
     assert identify_hasher(alice.password).algorithm == "argon2"
+    assert response.data["email_verified"] is False
     assert client.get("/api/me/").data["email"] == "alice@example.test"
     client.post("/api/auth/logout/")
     assert client.get("/api/me/").status_code == 403
@@ -23,8 +25,8 @@ def test_register_login_profile_and_private_email():
 
 @pytest.mark.django_db
 def test_search_is_exact_limited_and_never_leaks_email():
-    alice = User.objects.create_user("alice@example.test", "alice", "Alice", "long-password-123")
-    User.objects.create_user("bob-secret@example.test", "bobby", "Bob", "long-password-123")
+    alice = User.objects.create_user("alice@example.test", "alice", "Alice", "long-password-123", email_verified_at=timezone.now())
+    User.objects.create_user("bob-secret@example.test", "bobby", "Bob", "long-password-123", email_verified_at=timezone.now())
     client = APIClient(); client.force_login(alice)
     assert client.get("/api/users/search/?public_id=bob").data == []
     result = client.get("/api/users/search/?public_id=bobby").data

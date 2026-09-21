@@ -1,42 +1,39 @@
 # Contrats API et WebSocket
 
-Toutes les routes sont sous `/api/`, utilisent JSON et le cookie de session Django. Les écritures exigent l’en-tête `X-CSRFToken`, obtenu par `GET /api/auth/csrf/`. Aucun jeton durable n’est stocké dans `localStorage`.
+Toutes les routes sont sous `/api/`, utilisent JSON et, lorsque nécessaire, le cookie de session Django. Les écritures exigent `X-CSRFToken`, obtenu par `GET /api/auth/csrf/`. Aucun jeton durable n'est stocké dans `localStorage`.
 
-## Authentification et profil
+## Compte
 
-- `GET /api/health/` — état du processus.
-- `GET /api/auth/csrf/` — initialise/renouvelle la protection CSRF.
-- `POST /api/auth/register/` — `email`, `public_id`, `display_name`, `password`.
-- `POST /api/auth/login/` — `email`, `password`.
-- `POST /api/auth/logout/` — détruit la session et ferme ses WebSockets.
-- `GET /api/me/` — profil complet du compte courant.
-- `PATCH /api/me/` — modifie uniquement `display_name` et `bio`.
-- `GET /api/users/search/?public_id=...` — correspondance exacte, au plus cinq résultats, sans email.
+- `POST /api/auth/register/` — crée un compte non vérifié, ouvre une session et dépose l'email local.
+- `POST /api/auth/login/`, `POST /api/auth/logout/`.
+- `POST /api/auth/email/verify/` — `{ "token": "…" }`, usage unique.
+- `POST /api/auth/email/resend/` — session requise, fréquence limitée.
+- `POST /api/auth/password-reset/request/` — `{ "email": "…" }`, réponse non révélatrice.
+- `POST /api/auth/password-reset/confirm/` — `{ "token": "…", "new_password": "…" }`, révoque toutes les sessions.
+- `GET/PATCH /api/me/` — inclut `email_verified` et `email_verified_at`; seuls le nom affiché et la bio sont modifiables.
+- `GET /api/sessions/` — descriptions indicatives et session actuelle.
+- `DELETE /api/sessions/{uuid}/` — révoque une autre session.
+- `DELETE /api/sessions/others/` — révoque toutes les autres sessions.
+- `GET/POST /api/blocks/`, `DELETE /api/blocks/{public_id}/`.
+- `GET /api/users/search/?public_id=...` — adresse vérifiée requise, correspondance exacte, sans email.
+
+Les secrets de vérification/récupération ne sont stockés qu'après SHA-256, expirent et deviennent invalides après consommation. Une modification d'adresse invalide les liens de vérification existants.
 
 ## Conversations et messages
 
-- `GET /api/conversations/` — conversations du compte courant, dernier message et activité.
-- `POST /api/conversations/` — `{ "contact_public_id": "bob" }`; récupère la paire existante ou la crée atomiquement.
-- `GET /api/conversations/{uuid}/` — réservé à un participant.
-- `GET /api/conversations/{uuid}/messages/` — 50 messages récents en ordre serveur croissant.
-- `GET .../messages/?before={sequence}` — page précédente.
-- `GET .../messages/?after={sequence}` — jusqu’à 100 messages manqués, ordre croissant.
-- `POST .../messages/` — `{ "client_id": "uuid", "content": "texte" }`.
+- `GET/POST /api/conversations/` ;
+- `GET /api/conversations/{uuid}/` ;
+- `GET /api/conversations/{uuid}/messages/` avec `before` ou `after` ;
+- `POST /api/conversations/{uuid}/messages/` avec `client_id` et `content`.
 
-`client_id` est unique par auteur. Répéter le même envoi retourne le message existant sans doublon. `server_sequence` est l’identifiant monotone attribué par PostgreSQL et définit l’ordre stable.
+La vérification email est imposée côté serveur. Un blocage dans l'un ou l'autre sens retourne une indisponibilité générique à l'envoi ; l'historique reste accessible. Le contrôle est répété dans la transaction qui crée le message.
 
 ## WebSocket
 
-Connexion : `wss://hôte/ws/conversations/{uuid}/` avec le cookie de session existant et une origine autorisée.
+Connexion : `wss://hôte/ws/conversations/{uuid}/` avec cookie de session et origine autorisée. Le serveur revalide la session, la vérification email, l'appartenance et le blocage à l'ouverture, au heartbeat et avant chaque événement.
 
-Événements serveur :
+- révocation de la session : fermeture `4401` ;
+- conversation non autorisée ou blocage : fermeture `4403`, sans indiquer l'auteur du blocage ;
+- message : `message.created`.
 
-```json
-{"type":"ready"}
-{"type":"message.created","message":{"id":42,"server_sequence":42,"conversation_id":"…","author_id":1,"client_id":"…","content":"Bonjour","created_at":"…"}}
-```
-
-Le client envoie périodiquement `{"type":"ping"}` et reçoit `{"type":"pong"}`. À chaque événement et ping, le serveur revalide la session. Un logout diffuse une fermeture `4401`. Un non-participant reçoit `4403` lors de la connexion.
-
-L’envoi d’un message se fait par HTTP, puis l’événement WebSocket est publié après commit. `DeliveryOutbox` conserve les diffusions échouées ; le service `event-worker` les réessaie. Le rattrapage `?after=` reste la garantie finale si un événement n’arrive pas.
-
+Chaque socket rejoint un groupe dérivé par SHA-256 de la clé de session, jamais exposé au client. L'outbox et le rattrapage `?after=` restent la garantie de livraison après reconnexion.

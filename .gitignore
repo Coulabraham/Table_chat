@@ -17,3 +17,4 @@ frontend/vite.config.d.ts
 infra/caddy_data/
 infra/caddy_config/
 infra/tablechat-local-ca.crt
+backups/

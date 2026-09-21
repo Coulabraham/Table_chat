@@ -1,6 +1,7 @@
 import uuid
 
 import pytest
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import User
@@ -9,7 +10,7 @@ from chat.models import Conversation, Message
 
 @pytest.fixture
 def users(db):
-    return [User.objects.create_user(f"{name}@example.test", name, name.title(), "long-password-123") for name in ("alice","bob","mallory")]
+    return [User.objects.create_user(f"{name}@example.test", name, name.title(), "long-password-123", email_verified_at=timezone.now()) for name in ("alice","bob","mallory")]
 
 
 @pytest.fixture
@@ -86,3 +87,29 @@ def test_message_content_validation(users, clients):
     for content in ("   ", "x"*4001):
         response=alice_client.post(f"/api/conversations/{cid}/messages/",{"client_id":str(uuid.uuid4()),"content":content},format="json")
         assert response.status_code==400
+
+
+@pytest.mark.django_db(transaction=True)
+def test_block_preserves_history_and_prevents_messages_in_both_directions(users, clients):
+    alice,bob,_=users;alice_client,bob_client,_=clients
+    cid=alice_client.post("/api/conversations/",{"contact_public_id":"bob"},format="json").data["id"]
+    first=alice_client.post(f"/api/conversations/{cid}/messages/",{"client_id":str(uuid.uuid4()),"content":"avant blocage"},format="json")
+    assert first.status_code==201
+    blocked=alice_client.post("/api/blocks/",{"public_id":"bob"},format="json")
+    assert blocked.status_code==201
+    for client in (alice_client,bob_client):
+        denied=client.post(f"/api/conversations/{cid}/messages/",{"client_id":str(uuid.uuid4()),"content":"refusé"},format="json")
+        assert denied.status_code==403
+        assert "bloqu" not in str(denied.data).lower()
+    history=bob_client.get(f"/api/conversations/{cid}/messages/")
+    assert [item["content"] for item in history.data["results"]]==["avant blocage"]
+    assert alice_client.delete("/api/blocks/bob/").status_code==204
+    assert bob_client.post(f"/api/conversations/{cid}/messages/",{"client_id":str(uuid.uuid4()),"content":"après déblocage"},format="json").status_code==201
+
+
+@pytest.mark.django_db
+def test_unverified_account_cannot_use_private_messaging():
+    alice=User.objects.create_user("alice-unverified@example.test","alice_unverified","Alice","long-password-123")
+    client=APIClient();client.force_login(alice)
+    assert client.get("/api/users/search/?public_id=someone").status_code==403
+    assert client.get("/api/conversations/").status_code==403

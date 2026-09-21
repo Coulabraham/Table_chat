@@ -1,19 +1,35 @@
 # Sécurité et limites
 
-- Sessions serveur Django ; cookie `HttpOnly`, `SameSite=Lax`, `Secure` en environnement HTTPS.
-- CSRF explicite, y compris sur inscription et connexion ; origines CORS/CSRF restrictives.
-- Mots de passe hachés en Argon2 et validateurs Django actifs.
-- Limites : authentification 10/minute par adresse, messages 60/minute par utilisateur, autres actions authentifiées 240/minute ; contenu limité à 4 000 caractères et corps HTTP à 64 Kio.
-- Email jamais inclus dans les serializers publics. Recherche exacte par identifiant, maximum cinq résultats.
-- Autorisations recalculées côté serveur pour chaque conversation, historique, envoi et abonnement WebSocket.
-- Origine WebSocket validée contre `ALLOWED_HOSTS`; session contrôlée à l’ouverture, sur chaque événement et au heartbeat.
-- Les messages React restent du texte ; aucun HTML utilisateur n’est injecté.
-- PostgreSQL et Redis ne publient aucun port hôte dans Compose. Les secrets viennent de `.env`, absent du dépôt.
-- Les journaux applicatifs ne consignent ni mot de passe, ni cookie, ni contenu de message.
-- Réglages distincts `development`, `test` et `production`; la production refuse la clé secrète par défaut et active redirection/HSTS.
+## Protections actives
 
-## Confidentialité
+- Sessions serveur Django ; cookie `HttpOnly`, `SameSite=Lax` et `Secure` en HTTPS.
+- CSRF sur toutes les écritures, y compris inscription, connexion, vérification et récupération.
+- Argon2 en premier mécanisme de hachage et validateurs Django actifs.
+- Jetons aléatoires à forte entropie ; seul SHA-256 du secret est stocké. Les sélecteurs ne suffisent pas à utiliser un lien.
+- Vérification email : expiration configurable, usage unique, invalidation des anciens liens et invalidation après changement d'adresse.
+- Récupération : réponse identique pour adresse existante ou absente, expiration, usage unique et révocation de toutes les sessions.
+- Limitations : authentification 10/minute, actions email 5/heure par réseau/adresse, messages 60/minute, autres actions 240/minute.
+- Registre de sessions relié aux sessions Django ; aucun identifiant de session n'est retourné à l'interface.
+- Révocation transmise au groupe WebSocket dérivé par SHA-256 de la clé de session.
+- Blocage contrôlé sous verrou transactionnel avant l'écriture, puis revérifié sur les sockets ouvertes.
+- Email absent des serializers publics ; recherche exacte par identifiant, maximum cinq résultats.
+- PostgreSQL et Redis ne publient aucun port hôte. SMTP Mailpit et son interface sont liés exclusivement à `127.0.0.1`, donc inaccessibles depuis le LAN.
+- Secrets fournis par `.env`, absent du dépôt. Les journaux applicatifs ne consignent ni mot de passe, cookie, jeton ni contenu de message.
 
-Il n’y a pas de chiffrement de bout en bout. TLS protège le transport, mais le serveur et toute personne disposant d’un accès suffisant à la base peuvent lire les messages. Aucun cadenas ni statut trompeur n’est affiché.
+## Comptes existants
 
-Avant un accès public, il faut au minimum ajouter : vérification d’email, récupération/suppression de compte, politique de données, rotation des secrets, sauvegardes chiffrées et restauration testée, observabilité sans contenu privé, audit externe, tests de charge, protection de bordure et une décision cryptographique formelle sur l’E2EE.
+La migration `accounts.0003` ajoute `email_verified_at` avec `NULL`. Aucun compte antérieur n'est considéré silencieusement comme vérifié. Ces comptes peuvent se connecter et renvoyer un lien, mais pas utiliser la recherche, les conversations ou les WebSockets avant validation.
+
+## Sessions et appareils
+
+Le navigateur et la plateforme sont déduits grossièrement du `User-Agent`; l'adresse réseau et la dernière activité complètent l'affichage. Ces données sont indicatives, modifiables par le client et ne constituent jamais une identité matérielle certaine.
+
+## Sauvegardes
+
+Les sauvegardes contiennent des données privées en clair au niveau applicatif. Le script limite l'ACL Windows au compte courant et ne transmet rien, mais `pg_dump` ne chiffre pas le fichier. Utiliser un volume chiffré, limiter les accès, tester les restaurations et distinguer une copie sur le même disque d'une copie hors machine.
+
+## Confidentialité et limites
+
+Il n'y a pas de chiffrement de bout en bout. TLS protège le transport, mais le serveur et toute personne disposant d'un accès suffisant à PostgreSQL ou aux sauvegardes peuvent lire les messages.
+
+Avant un accès public, il faut notamment : domaine et certificat public, changement/suppression de compte, politique de données, rotation des secrets, SMTP réel protégé, sauvegarde externe chiffrée, observabilité sans contenu privé, audit indépendant, tests de charge et décision cryptographique formelle sur l'E2EE.

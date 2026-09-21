@@ -1,16 +1,27 @@
-# Table Chat
+# TableChat
 
-Prototype fonctionnel de messagerie privée pour essais privés. Deux utilisateurs peuvent créer un compte, se retrouver par identifiant public et échanger des messages persistants en temps réel. PostgreSQL est la source de vérité ; Redis transporte les événements WebSocket.
+TableChat est une messagerie privée pour essais sur un réseau local. Deux personnes peuvent créer un compte, vérifier leur adresse, se retrouver par identifiant public et échanger des messages persistants en temps réel. PostgreSQL est la source de vérité ; Redis transporte les événements WebSocket.
 
-> Important : cette version n’utilise pas de chiffrement de bout en bout. Le serveur peut lire les messages. La vérification d’email et la récupération de mot de passe ne sont pas implémentées ; ne pas ouvrir ce prototype au public.
+> Cette version n'utilise pas de chiffrement de bout en bout. TLS protège le transport, mais le serveur et les administrateurs de l'infrastructure peuvent lire les messages. Ne pas ouvrir ce prototype au public.
 
-## Démarrage recommandé avec Docker
+## Fonctions disponibles
+
+- inscription, connexion et profil ;
+- vérification d'adresse email avec lien temporaire à usage unique et renvoi limité ;
+- mot de passe oublié sans divulgation de l'existence d'un compte ;
+- inventaire indicatif des sessions, révocation d'une session ou de toutes les autres ;
+- blocage dans les deux sens sans suppression de l'historique ;
+- conversation privée persistante, WebSocket, reconnexion et rattrapage ;
+- sauvegarde PostgreSQL et restauration de contrôle dans une base isolée ;
+- interface React adaptée au téléphone et à l'ordinateur.
+
+## Démarrage avec Docker
 
 Prérequis : Docker Desktop avec Compose, ports 80 et 443 libres.
 
 1. Copier `.env.example` vers `.env`.
 2. Remplacer `DJANGO_SECRET_KEY` et `POSTGRES_PASSWORD` par des valeurs aléatoires fortes.
-3. Pour un seul ordinateur, conserver `SITE_ADDRESS=https://localhost`.
+3. Conserver `SITE_ADDRESS=https://localhost`, `SITE_HOST=localhost` et `APP_BASE_URL=https://localhost` pour un seul ordinateur.
 4. Lancer :
 
 ```powershell
@@ -18,70 +29,58 @@ docker compose up --build -d
 docker compose ps
 ```
 
-Ouvrir `https://localhost`. Caddy produit un certificat local ; le navigateur demandera de faire confiance à son autorité locale. L’API (`/api`) et les WebSockets (`/ws`) partagent exactement la même origine que le frontend.
+Ouvrir `https://localhost`. La boîte de développement Mailpit est disponible uniquement sur le PC à l'adresse `http://localhost:8025`. Aucun email n'est envoyé sur Internet avec la configuration fournie.
 
-Arrêt sans supprimer les données :
+Arrêt sans suppression des données :
 
 ```powershell
 docker compose down
 ```
 
-Redémarrage, les comptes et messages étant conservés dans le volume PostgreSQL :
-
-```powershell
-docker compose up -d
-```
-
-Ne lancer `docker compose down -v` que si la suppression définitive de la base de développement est souhaitée.
+Ne lancer `docker compose down -v` que pour supprimer définitivement PostgreSQL, Redis, Mailpit et leurs données.
 
 ## Utilisation sur ordinateur et téléphone
 
-Les deux appareils doivent être sur le même réseau privé. Aucun port PostgreSQL ou Redis n’est publié.
-
-1. Trouver l’adresse IPv4 LAN de l’ordinateur avec `ipconfig`, par exemple `192.168.1.42`.
-2. Dans `.env`, régler exactement :
+Les appareils doivent être sur le même réseau privé. Pour l'adresse LAN `192.168.1.42`, configurer :
 
 ```dotenv
 SITE_ADDRESS=https://192.168.1.42
+SITE_HOST=192.168.1.42
+APP_BASE_URL=https://192.168.1.42
 DJANGO_ALLOWED_HOSTS=192.168.1.42,localhost,127.0.0.1
-CSRF_TRUSTED_ORIGINS=https://192.168.1.42
+CSRF_TRUSTED_ORIGINS=https://192.168.1.42,https://localhost
 ```
 
-3. Relancer `docker compose up --build -d`.
-4. Autoriser les ports TCP 80/443 dans le pare-feu uniquement pour le profil réseau privé.
-5. Exporter l’autorité locale de Caddy :
+Puis recréer les services :
+
+```powershell
+docker compose up --build -d
+```
+
+Autoriser les ports TCP 80/443 uniquement sur le profil réseau privé. Exporter l'autorité Caddy si nécessaire :
 
 ```powershell
 docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt .\infra\tablechat-local-ca.crt
 ```
 
-6. Installer ce certificat comme autorité de confiance sur les deux appareils de test. Ne jamais distribuer sa clé privée. Sur iPhone, activer ensuite la confiance complète dans *Réglages > Général > Informations > Réglages des certificats* ; sur Android, installer le certificat CA utilisateur selon la version du système.
-7. Ouvrir `https://192.168.1.42` sur les deux appareils. Ne pas utiliser `localhost` sur le téléphone.
+Installer uniquement ce certificat public sur les appareils de test et ouvrir `https://192.168.1.42`. Ne jamais distribuer la clé privée de Caddy. Le PC hôte doit rester allumé et son adresse IP doit rester stable.
 
-Si l’installation d’une CA locale est interdite par la politique de l’appareil, utiliser deux contextes de navigateur isolés sur l’ordinateur pour la recette automatisée. Ne pas contourner TLS ni désactiver CSRF/origines autorisées.
+## Vérification email et récupération
 
-## Développement sans Docker
+À l'inscription, le compte est explicitement non vérifié et un email est déposé dans Mailpit. Avant vérification, l'utilisateur peut se connecter, consulter/modifier son profil, gérer ses sessions et blocages, renvoyer le lien, utiliser la récupération et se déconnecter. La recherche de contacts, les conversations et les WebSockets privés sont refusés côté serveur.
 
-Cette voie sert au développement local sur un seul ordinateur. SQLite et le canal mémoire du réglage de test ne remplacent pas PostgreSQL/Redis pour une recette de déploiement.
+Les comptes créés avant la migration `accounts.0003` restent volontairement non vérifiés. Après connexion, ils doivent utiliser **Réglages > Renvoyer le lien**.
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -c .\backend\constraints.txt -r .\backend\requirements-dev.txt
-$env:DJANGO_SETTINGS_MODULE="tablechat.settings.test"
-.\.venv\Scripts\python.exe .\backend\manage.py migrate
-cd backend
-..\.venv\Scripts\python.exe -m daphne -b 127.0.0.1 -p 8000 tablechat.asgi:application
-```
+Procédure complète : [docs/EMAILS.md](docs/EMAILS.md). Les variables `EMAIL_*` de `.env.example` permettent plus tard de brancher un SMTP réel, mais aucun service externe n'est configuré ou souscrit ici.
 
-Dans un second terminal :
+## Sauvegarde et restauration
 
 ```powershell
-cd frontend
-npm ci
-npm run dev
+.\scripts\backup-postgres.ps1
+.\scripts\verify-restore.ps1 -BackupPath ".\backups\tablechat-AAAAMMJJ-HHMMSS.dump"
 ```
 
-Ouvrir `http://127.0.0.1:5173`.
+La destination et la rétention sont configurables avec `BACKUP_DESTINATION`, `BACKUP_RETENTION_DAYS` ou les paramètres des scripts. Une copie sur le même PC ne protège pas contre la perte du PC ; conserver une copie chiffrée ailleurs nécessite une décision et une autorisation explicites. Voir [docs/SAUVEGARDE.md](docs/SAUVEGARDE.md).
 
 ## Tests et contrôles
 
@@ -93,32 +92,32 @@ cd backend
 cd ..\frontend
 npm ci
 npm run build
+npm run lint
 npm audit
-npx playwright install chromium
 $env:TABLECHAT_URL="https://localhost"
+$env:TABLECHAT_MAILPIT_URL="http://127.0.0.1:8025"
 npm run test:e2e -- --project=desktop
 ```
 
-Pour une recette locale autonome (SQLite + canal mémoire, ports 8001/5174), après les migrations : `npm run test:e2e:local`.
-
-Le test Playwright utilise deux contextes de navigateur indépendants. Il exige la pile Docker active. La procédure manuelle complète est dans [docs/RECETTE.md](docs/RECETTE.md).
-Le compte rendu factuel de cette livraison est dans [docs/VERIFICATIONS.md](docs/VERIFICATIONS.md).
+La recette navigateur récupère réellement les liens de vérification avec l'API locale Mailpit. Les résultats constatés sont consignés dans [docs/VERIFICATIONS.md](docs/VERIFICATIONS.md).
 
 ## Architecture
 
-- `backend/accounts` : utilisateur, sessions, CSRF, authentification, profil, recherche exacte et limitation de débit.
-- `backend/chat` : conversations à deux participants, historique par curseur, messages idempotents, WebSocket et outbox de rattrapage.
-- `frontend` : React/TypeScript, TanStack Query, React Router et Tailwind ; navigation mobile/desktop, états d’envoi et reconnexion progressive.
-- `infra/Caddyfile` : terminaison HTTPS et origine unique.
-- `compose.yaml` : frontend, backend ASGI, worker d’événements, PostgreSQL, Redis et Caddy.
+- `backend/accounts` : utilisateurs, jetons à usage unique, email, récupération, sessions, blocages, CSRF et limitations de débit ;
+- `backend/chat` : paire privée canonique, historique par curseur, idempotence, WebSocket et outbox ;
+- `frontend` : React/TypeScript, TanStack Query, React Router et Tailwind ;
+- `mailpit` : SMTP et boîte locale de développement, liés uniquement à `127.0.0.1:1025/8025` ;
+- `infra/Caddyfile` : HTTPS et origine unique ;
+- `compose.yaml` : frontend, backend ASGI, worker, PostgreSQL, Redis, Mailpit et Caddy.
 
-Les contrats HTTP et temps réel sont résumés dans [docs/API.md](docs/API.md). Les décisions de sécurité et limites sont dans [docs/SECURITE.md](docs/SECURITE.md).
+Les contrats sont dans [docs/API.md](docs/API.md), la sécurité dans [docs/SECURITE.md](docs/SECURITE.md) et la recette manuelle dans [docs/RECETTE.md](docs/RECETTE.md).
 
 ## Limites avant ouverture publique
 
-- Pas de vérification d’email, récupération de mot de passe, suppression de compte ni gestion multi-session.
-- Pas d’E2EE : messages lisibles par le serveur et les administrateurs de l’infrastructure.
-- Pas de pièces jointes, groupes, appels, notifications Push, jeux ni paiements.
-- Le mécanisme d’outbox rediffuse les événements, mais une exploitation publique demanderait supervision, métriques, alertes, sauvegardes chiffrées/restaurations testées et tests de charge.
-- La limitation DRF utilise le cache configuré ; pour plusieurs réplicas publics, configurer un cache Redis dédié et une protection en bordure.
-- L’autorité TLS interne Caddy convient à un laboratoire privé, pas à un domaine public.
+- aucune modification d'adresse email ni suppression de compte ;
+- aucun chiffrement de bout en bout ;
+- aucun groupe, fichier, appel, jeu, paiement ou notification Push ;
+- autorité TLS interne adaptée au laboratoire, pas à un domaine public ;
+- pas encore de supervision, sauvegarde externe chiffrée automatisée, restauration planifiée, audit externe ni test de charge ;
+- les informations de navigateur/appareil sont seulement indicatives ;
+- le SMTP réel nécessite gestion des secrets, réputation d'envoi, politique de données et autorisation explicite.

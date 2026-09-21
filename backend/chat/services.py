@@ -1,10 +1,16 @@
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 
+from accounts.models import User, UserBlock
 from .models import Conversation, DeliveryOutbox, Message
 from .serializers import MessageSerializer
+
+
+class MessagingBlockedError(Exception):
+    pass
 
 
 def get_or_create_private_conversation(user, contact):
@@ -44,6 +50,13 @@ def publish_message(message_id):
 
 def create_message(conversation, author, *, client_id, content):
     with transaction.atomic():
+        participant_ids = sorted((conversation.user_low_id, conversation.user_high_id))
+        list(User.objects.select_for_update().filter(pk__in=participant_ids).order_by("pk"))
+        if UserBlock.objects.filter(
+            Q(blocker_id=participant_ids[0], blocked_id=participant_ids[1])
+            | Q(blocker_id=participant_ids[1], blocked_id=participant_ids[0])
+        ).exists():
+            raise MessagingBlockedError
         existing = Message.objects.filter(author=author, client_id=client_id).first()
         if existing is not None:
             if existing.conversation_id != conversation.pk:

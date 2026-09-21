@@ -4,7 +4,7 @@ from django.contrib.auth import authenticate, password_validation
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
-from .models import User
+from .models import AccountSession, User, UserBlock
 
 PUBLIC_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{2,31}$")
 
@@ -16,10 +16,12 @@ class PublicUserSerializer(serializers.ModelSerializer):
 
 
 class MeSerializer(serializers.ModelSerializer):
+    email_verified = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = User
-        fields = ("id", "email", "public_id", "display_name", "bio")
-        read_only_fields = ("id", "email", "public_id")
+        fields = ("id", "email", "public_id", "display_name", "bio", "email_verified", "email_verified_at")
+        read_only_fields = ("id", "email", "public_id", "email_verified", "email_verified_at")
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -56,3 +58,38 @@ class LoginSerializer(serializers.Serializer):
             raise serializers.ValidationError("Email ou mot de passe incorrect.")
         attrs["user"] = user
         return attrs
+
+
+class TokenSerializer(serializers.Serializer):
+    token = serializers.CharField(max_length=256, trim_whitespace=False)
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class PasswordResetConfirmSerializer(TokenSerializer):
+    new_password = serializers.CharField(write_only=True, trim_whitespace=False, max_length=128)
+
+
+class AccountSessionSerializer(serializers.ModelSerializer):
+    current = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AccountSession
+        fields = ("id", "description", "ip_address", "created_at", "last_activity_at", "current")
+
+    def get_current(self, obj):
+        return obj.session_id == self.context["request"].session.session_key
+
+
+class UserBlockSerializer(serializers.ModelSerializer):
+    user = PublicUserSerializer(source="blocked", read_only=True)
+
+    class Meta:
+        model = UserBlock
+        fields = ("id", "user", "created_at")
+
+
+class CreateUserBlockSerializer(serializers.Serializer):
+    public_id = serializers.CharField(max_length=32)

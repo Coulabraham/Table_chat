@@ -27,10 +27,10 @@ async function waitFor(url) {
 
 let exitCode = 1
 try {
-  start(python, ['-m','daphne','-b','127.0.0.1','-p','8001','tablechat.asgi:application'], {cwd:backend, env:{...process.env,DJANGO_SETTINGS_MODULE:'tablechat.settings.test'}})
+  start(python, ['-m','daphne','-b','127.0.0.1','-p','8001','tablechat.asgi:application'], {cwd:backend, env:{...process.env,DJANGO_SETTINGS_MODULE:'tablechat.settings.test',EMAIL_BACKEND:'django.core.mail.backends.smtp.EmailBackend',EMAIL_HOST:'127.0.0.1',EMAIL_PORT:'1025',APP_BASE_URL:'http://127.0.0.1:5174'}})
   start(node, [vite,'--host','127.0.0.1','--port','5174'], {cwd:frontend, env:{...process.env,VITE_BACKEND_TARGET:'http://127.0.0.1:8001'}})
   await waitFor('http://127.0.0.1:5174/api/health/')
-  const tests = spawn(node, [playwright,'test',...process.argv.slice(2)], {cwd:frontend, env:{...process.env,TABLECHAT_URL:'http://127.0.0.1:5174'}, stdio:'inherit'})
+  const tests = spawn(node, [playwright,'test',...process.argv.slice(2)], {cwd:frontend, env:{...process.env,TABLECHAT_URL:'http://127.0.0.1:5174',TABLECHAT_MAILPIT_URL:'http://127.0.0.1:8025'}, stdio:'inherit'})
   exitCode = await new Promise(resolve => tests.on('exit', code => resolve(code ?? 1)))
 } finally {
   for (const child of children.reverse()) if (!child.killed) child.kill()

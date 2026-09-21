@@ -1,5 +1,9 @@
 # Recette à deux utilisateurs
 
+## Préparer les comptes
+
+Après chaque inscription, ouvrir `http://localhost:8025` sur le PC, sélectionner l'email de vérification et ouvrir le lien. Tant que l'adresse n'est pas vérifiée, la recherche et la messagerie doivent rester refusées. Les comptes antérieurs au lot 2 utilisent **Réglages > Renvoyer le lien**.
+
 ## Validation manuelle sur ordinateur et téléphone
 
 Préparer l’accès HTTPS LAN selon le README, puis utiliser deux adresses email et deux identifiants publics jamais employés.
@@ -16,6 +20,14 @@ Préparer l’accès HTTPS LAN selon le README, puis utiliser deux adresses emai
 10. Déconnecter Bob depuis Réglages. Sa socket doit se fermer et toute écriture API ultérieure doit être refusée.
 11. Vérifier à 320 px que la saisie et la navigation basse sont visibles ; sur ordinateur, vérifier la liste à gauche et la conversation à droite.
 
+## Comptes et protections
+
+1. Demander un mot de passe oublié pour une adresse existante puis absente : le texte et le statut doivent être identiques.
+2. Ouvrir le lien Mailpit, définir le mot de passe et vérifier que le lien ne fonctionne plus une seconde fois.
+3. Connecter le même compte dans deux navigateurs, ouvrir **Réglages > Appareils connectés**, puis déconnecter l'autre session. Son écran et sa socket doivent perdre l'accès.
+4. Bloquer un contact depuis la conversation : les deux comptes doivent conserver l'historique mais ne plus pouvoir envoyer. Le compte bloqué ne doit recevoir aucune indication disant qui a initié le blocage.
+5. Débloquer depuis la conversation ou les réglages et vérifier qu'un nouvel envoi fonctionne.
+
 ## Idempotence manuelle
 
 Dans les outils réseau du navigateur, recopier une requête `POST .../messages/` avec le même `client_id`. La seconde réponse doit être `200`, contenir le même `id` que la première réponse `201`, et une seule bulle doit apparaître.
@@ -25,4 +37,3 @@ Dans les outils réseau du navigateur, recopier une requête `POST .../messages/
 `backend` couvre inscription/session/Argon2, recherche sans fuite d’email, CSRF, paire canonique, idempotence, pagination/rattrapage, validation, interdiction d’un tiers, logout et autorisation WebSocket.
 
 `frontend/e2e/messaging.spec.ts` couvre deux contextes isolés, création des comptes, recherche, aller-retour temps réel et persistance après actualisation. Il doit être lancé contre la pile Compose active. Un vrai redémarrage de conteneur et deux appareils physiques restent des vérifications manuelles, car l’environnement d’exécution du test ne doit pas administrer Docker pendant le scénario navigateur.
-

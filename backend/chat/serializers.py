@@ -17,10 +17,11 @@ class MessageSerializer(serializers.ModelSerializer):
 class ConversationSerializer(serializers.ModelSerializer):
     other_user = serializers.SerializerMethodField()
     last_message = serializers.SerializerMethodField()
+    blocked_by_me = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
-        fields = ("id", "other_user", "last_message", "updated_at", "created_at")
+        fields = ("id", "other_user", "last_message", "blocked_by_me", "updated_at", "created_at")
 
     def get_other_user(self, obj):
         return PublicUserSerializer(obj.other_user(self.context["request"].user)).data
@@ -28,6 +29,10 @@ class ConversationSerializer(serializers.ModelSerializer):
     def get_last_message(self, obj):
         message = obj.messages.order_by("-id").first()
         return MessageSerializer(message).data if message else None
+
+    def get_blocked_by_me(self, obj):
+        user = self.context["request"].user
+        return user.blocks_created.filter(blocked=obj.other_user(user)).exists()
 
 
 class CreateMessageSerializer(serializers.Serializer):
@@ -42,4 +47,3 @@ class CreateMessageSerializer(serializers.Serializer):
 
 class CreateConversationSerializer(serializers.Serializer):
     contact_public_id = serializers.CharField(max_length=32)
-
