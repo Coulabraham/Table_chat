@@ -48,6 +48,20 @@ def publish_message(message_id):
     return True
 
 
+def publish_pending_events(*, conversation_id=None, limit=100):
+    pending = DeliveryOutbox.objects.filter(
+        delivered_at__isnull=True,
+        next_attempt_at__lte=timezone.now(),
+    )
+    if conversation_id is not None:
+        pending = pending.filter(message__conversation_id=conversation_id)
+    message_ids = list(pending.order_by("message_id").values_list("message_id", flat=True)[:limit])
+    delivered = 0
+    for message_id in message_ids:
+        delivered += int(publish_message(message_id))
+    return {"attempted": len(message_ids), "delivered": delivered}
+
+
 def create_message(conversation, author, *, client_id, content):
     with transaction.atomic():
         participant_ids = sorted((conversation.user_low_id, conversation.user_high_id))
@@ -79,5 +93,8 @@ def create_message(conversation, author, *, client_id, content):
             return message, False
         Conversation.objects.filter(pk=conversation.pk).update(updated_at=message.created_at)
         DeliveryOutbox.objects.create(message=message)
-        transaction.on_commit(lambda: publish_message(message.pk))
+        # La tentative immédiate conserve le temps réel. En cas de coupure Redis,
+        # le prochain envoi ou la prochaine connexion rejoue aussi les événements
+        # précédents, ce qui évite de dépendre d'un worker permanent sur Vercel.
+        transaction.on_commit(lambda: publish_pending_events(conversation_id=conversation.pk))
     return message, True

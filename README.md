@@ -112,12 +112,16 @@ La recette navigateur récupère réellement les liens de vérification avec l'A
 
 Les contrats sont dans [docs/API.md](docs/API.md), la sécurité dans [docs/SECURITE.md](docs/SECURITE.md) et la recette manuelle dans [docs/RECETTE.md](docs/RECETTE.md).
 
+## Déploiement Internet
+
+Le dépôt contient une configuration Vercel Services qui conserve le frontend, l'API Django et les WebSockets sur la même origine. PostgreSQL peut être fourni par Supabase et Redis par une intégration Upstash du Marketplace Vercel. La procédure, les secrets requis, les migrations et la recette sont détaillés dans [docs/DEPLOIEMENT_VERCEL_SUPABASE.md](docs/DEPLOIEMENT_VERCEL_SUPABASE.md).
+
 ## Limites avant ouverture publique
 
 - aucune modification d'adresse email ni suppression de compte ;
 - aucun chiffrement de bout en bout ;
 - aucun groupe, fichier, appel, jeu, paiement ou notification Push ;
-- autorité TLS interne adaptée au laboratoire, pas à un domaine public ;
+- l'autorité TLS de Caddy reste strictement locale ; le déploiement public utilise le certificat géré par Vercel ;
 - pas encore de supervision, sauvegarde externe chiffrée automatisée, restauration planifiée, audit externe ni test de charge ;
 - les informations de navigateur/appareil sont seulement indicatives ;
-- le SMTP réel nécessite gestion des secrets, réputation d'envoi, politique de données et autorisation explicite.
+- le déploiement public nécessite encore les comptes, secrets et ressources Vercel, Supabase, Redis et SMTP du propriétaire.

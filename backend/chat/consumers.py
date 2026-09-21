@@ -6,6 +6,7 @@ from django.utils import timezone
 from accounts.models import UserBlock
 from accounts.services import session_group_name
 from .models import Conversation
+from .services import publish_pending_events
 
 
 class ConversationConsumer(AsyncJsonWebsocketConsumer):
@@ -21,6 +22,7 @@ class ConversationConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.group_add(self.session_group, self.channel_name)
         await self.accept()
         await self.send_json({"type": "ready"})
+        await self.retry_pending_events()
 
     async def disconnect(self, close_code):
         if hasattr(self, "conversation_group"):
@@ -70,3 +72,7 @@ class ConversationConsumer(AsyncJsonWebsocketConsumer):
     def session_is_valid(self):
         session = self.scope.get("session")
         return bool(self.user.is_active and session and session.session_key and Session.objects.filter(session_key=session.session_key, expire_date__gt=timezone.now()).exists())
+
+    @database_sync_to_async
+    def retry_pending_events(self):
+        return publish_pending_events(conversation_id=self.conversation_id)

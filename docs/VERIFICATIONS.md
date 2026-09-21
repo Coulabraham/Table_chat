@@ -31,3 +31,11 @@
 - Aucun service de sauvegarde externe n'a été appelé.
 - Le rendu a été automatisé avec Chromium desktop/mobile ; les menus natifs d'installation de certificat restent dépendants de chaque appareil physique.
 - Les messages restent lisibles par le serveur et dans les sauvegardes.
+
+## Préparation du déploiement public
+
+- Configuration `vercel.json` multi-service analysée comme JSON valide : frontend Vite, backend Django ASGI, routes API/WebSocket et repli SPA.
+- Réglages de production importés avec un environnement Vercel simulé : hôte Vercel et origine CSRF ajoutés automatiquement, dépendances Supabase/Redis exigées.
+- Cache Redis partagé activable pour que les limitations de fréquence ne soient pas propres à une seule instance Vercel.
+- Reprise opportuniste ajoutée sans régression dans la suite des 19 tests ; compilation, ESLint et audit npm toujours réussis.
+- Le CLI Vercel `59.24.0` a été essayé localement, mais aucun compte Vercel, Supabase ou secret cloud n'est connecté sur ce PC. Aucun déploiement public n'a donc encore été créé.

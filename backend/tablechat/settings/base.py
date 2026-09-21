@@ -7,6 +7,9 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "unsafe-development-only-key")
 DEBUG = False
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
+VERCEL_HOST = os.environ.get("VERCEL_PROJECT_PRODUCTION_URL") or os.environ.get("VERCEL_URL")
+if VERCEL_HOST and VERCEL_HOST not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(VERCEL_HOST)
 
 INSTALLED_APPS = [
     "daphne",
@@ -41,7 +44,13 @@ TEMPLATES = [{"BACKEND": "django.template.backends.django.DjangoTemplates", "DIR
 WSGI_APPLICATION = "tablechat.wsgi.application"
 ASGI_APPLICATION = "tablechat.asgi.application"
 
-DATABASES = {"default": dj_database_url.config(default=os.environ.get("DATABASE_URL", "sqlite:///" + str(BASE_DIR / "db.sqlite3")), conn_max_age=60)}
+DATABASES = {
+    "default": dj_database_url.config(
+        default=os.environ.get("DATABASE_URL", "sqlite:///" + str(BASE_DIR / "db.sqlite3")),
+        conn_max_age=int(os.environ.get("DATABASE_CONN_MAX_AGE", "60")),
+        conn_health_checks=True,
+    )
+}
 
 AUTH_USER_MODEL = "accounts.User"
 AUTH_PASSWORD_VALIDATORS = [
@@ -80,6 +89,10 @@ CSRF_COOKIE_SECURE = os.environ.get("CSRF_COOKIE_SECURE", "true").lower() == "tr
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 14
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "https://localhost").split(",") if o.strip()]
+if VERCEL_HOST:
+    vercel_origin = f"https://{VERCEL_HOST}"
+    if vercel_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(vercel_origin)
 CORS_ALLOWED_ORIGINS = CSRF_TRUSTED_ORIGINS
 CORS_ALLOW_CREDENTIALS = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
@@ -90,7 +103,21 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 64 * 1024
 REDIS_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
 CHANNEL_LAYERS = {"default": {"BACKEND": "channels_redis.core.RedisChannelLayer", "CONFIG": {"hosts": [REDIS_URL], "capacity": 500, "expiry": 60}}}
 
-APP_BASE_URL = os.environ.get("APP_BASE_URL", os.environ.get("SITE_ADDRESS", "http://localhost:5173"))
+CACHE_URL = os.environ.get("CACHE_URL")
+if CACHE_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": CACHE_URL,
+            "KEY_PREFIX": "tablechat",
+            "TIMEOUT": 3600,
+        }
+    }
+
+APP_BASE_URL = os.environ.get(
+    "APP_BASE_URL",
+    f"https://{VERCEL_HOST}" if VERCEL_HOST else os.environ.get("SITE_ADDRESS", "http://localhost:5173"),
+)
 EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "localhost")
 EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "1025"))
