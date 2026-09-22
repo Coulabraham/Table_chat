@@ -1,5 +1,6 @@
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.conf import settings
 from django.contrib.auth import login, logout
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
@@ -67,10 +68,15 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        if not settings.REQUIRE_EMAIL_VERIFICATION:
+            user.email_verified_at = timezone.now()
+            user.save(update_fields=("email_verified_at",))
         login(request, user)
         track_request_session(request)
         data = MeSerializer(user).data
-        data["verification_email_sent"] = send_verification_email(user)
+        data["verification_email_sent"] = (
+            send_verification_email(user) if settings.REQUIRE_EMAIL_VERIFICATION else False
+        )
         return Response(data, status=status.HTTP_201_CREATED)
 
 
@@ -115,7 +121,10 @@ class UserSearchView(APIView):
         query = request.query_params.get("public_id", "").strip().lower()
         if len(query) < 3:
             return Response([])
-        users = User.objects.filter(public_id=query, is_active=True, email_verified_at__isnull=False).exclude(pk=request.user.pk)[:5]
+        users = User.objects.filter(public_id=query, is_active=True)
+        if settings.REQUIRE_EMAIL_VERIFICATION:
+            users = users.filter(email_verified_at__isnull=False)
+        users = users.exclude(pk=request.user.pk)[:5]
         return Response(PublicUserSerializer(users, many=True).data)
 
 

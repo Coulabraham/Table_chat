@@ -90,9 +90,14 @@ EMAIL_HOST_PASSWORD=<secret SMTP>
 EMAIL_USE_TLS=true
 EMAIL_USE_SSL=false
 DEFAULT_FROM_EMAIL=TableChat <adresse autorisée>
+REQUIRE_EMAIL_VERIFICATION=true
 EMAIL_VERIFICATION_TTL_SECONDS=86400
 PASSWORD_RESET_TTL_SECONDS=1800
 ```
+
+Pour des essais privés uniquement, `REQUIRE_EMAIL_VERIFICATION=false` autorise
+immédiatement les comptes nouveaux et existants sans envoyer de lien. Remettre
+la valeur à `true` avant toute ouverture publique.
 
 Vercel injecte aussi son propre nom d'hôte ; TableChat l'ajoute automatiquement aux hôtes Django et aux origines CSRF autorisées. `APP_BASE_URL` doit néanmoins désigner l'URL de production stable afin que les liens reçus par email soient corrects.
 

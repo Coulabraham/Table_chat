@@ -1,5 +1,6 @@
 import re
 
+from django.conf import settings
 from django.contrib.auth import authenticate, password_validation
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
@@ -16,12 +17,15 @@ class PublicUserSerializer(serializers.ModelSerializer):
 
 
 class MeSerializer(serializers.ModelSerializer):
-    email_verified = serializers.BooleanField(read_only=True)
+    email_verified = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = ("id", "email", "public_id", "display_name", "bio", "email_verified", "email_verified_at")
         read_only_fields = ("id", "email", "public_id", "email_verified", "email_verified_at")
+
+    def get_email_verified(self, obj):
+        return not settings.REQUIRE_EMAIL_VERIFICATION or obj.email_verified
 
 
 class RegisterSerializer(serializers.ModelSerializer):
