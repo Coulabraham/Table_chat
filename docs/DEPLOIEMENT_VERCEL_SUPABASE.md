@@ -28,6 +28,9 @@ Le même domaine Vercel pour le frontend, l'API et les WebSockets conserve les c
 4. Conserver cette URI uniquement dans les secrets Vercel sous le nom `DATABASE_URL`.
 
 TableChat utilise un backend Fluid et doit employer le Session pooler, pas l'URI Transaction pooler `:6543`.
+`DATABASE_CONN_MAX_AGE=0` est indispensable avec la limite du pool Supabase :
+chaque requête Vercel libère sa connexion au lieu d'occuper durablement un des
+clients disponibles.
 
 ## 2. Créer Redis dans Vercel
 
@@ -76,7 +79,7 @@ DJANGO_DEBUG=false
 DJANGO_ALLOWED_HOSTS=.vercel.app,votre-domaine.example
 CSRF_TRUSTED_ORIGINS=https://*.vercel.app,https://votre-domaine.example
 DATABASE_URL=<URI Session pooler Supabase avec sslmode=require>
-DATABASE_CONN_MAX_AGE=60
+DATABASE_CONN_MAX_AGE=0
 REDIS_URL=<URI rediss Upstash>
 CACHE_URL=<même URI rediss Upstash>
 SESSION_COOKIE_SECURE=true
