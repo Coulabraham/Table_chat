@@ -114,7 +114,7 @@ Les contrats sont dans [docs/API.md](docs/API.md), la sécurité dans [docs/SECU
 
 ## Déploiement Internet
 
-Le dépôt contient une configuration Vercel Services qui conserve le frontend, l'API Django et les WebSockets sur la même origine. PostgreSQL peut être fourni par Supabase et Redis par une intégration Upstash du Marketplace Vercel. La procédure, les secrets requis, les migrations et la recette sont détaillés dans [docs/DEPLOIEMENT_VERCEL_SUPABASE.md](docs/DEPLOIEMENT_VERCEL_SUPABASE.md).
+Le dépôt contient une configuration Vercel Services qui conserve le frontend, l'API Django et les WebSockets sur la même origine. PostgreSQL peut être fourni par Supabase et Redis par une intégration Upstash du Marketplace Vercel. Vercel Services et les WebSockets Functions étant encore en bêta, le client reconnecte automatiquement les connexions arrivées à leur durée maximale. La liste des variables se trouve dans [.env.production.example](.env.production.example) et la procédure complète dans [docs/DEPLOIEMENT_VERCEL_SUPABASE.md](docs/DEPLOIEMENT_VERCEL_SUPABASE.md).
 
 ## Limites avant ouverture publique
 

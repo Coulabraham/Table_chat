@@ -17,6 +17,7 @@
       "entrypoint": "app:app",
       "functions": {
         "**/*.py": {
+          "maxDuration": 300,
           "excludeFiles": "{accounts/tests/**,chat/tests/**,**/__pycache__/**,db.sqlite3}"
         }
       }

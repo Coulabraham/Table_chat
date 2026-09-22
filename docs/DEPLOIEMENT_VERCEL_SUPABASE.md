@@ -1,5 +1,16 @@
 # Déploiement Internet avec Vercel et Supabase
 
+> État vérifié en septembre 2026 : Vercel Services, le runtime Python ASGI et
+> les WebSockets de Vercel Functions sont disponibles, mais encore en bêta.
+> Une connexion WebSocket reste attachée à une Function jusqu'à sa durée
+> maximale. Le backend est configuré à 300 secondes et le frontend se
+> reconnecte automatiquement.
+
+Documentation officielle : [Vercel Services](https://vercel.com/docs/services),
+[runtime Python](https://vercel.com/docs/functions/runtimes/python),
+[WebSockets Vercel Functions](https://vercel.com/kb/guide/do-vercel-serverless-functions-support-websocket-connections)
+et [connexions PostgreSQL Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres).
+
 ## Architecture retenue
 
 - **Vercel Services** publie le frontend Vite à `/` et le backend Django ASGI à `/api` et `/ws` sur le même domaine.
@@ -51,6 +62,11 @@ Pour un fournisseur qui impose le port `465`, utiliser `EMAIL_USE_SSL=true` et `
 4. Activer Fluid Compute si le projet ne l'a pas déjà activé.
 5. Relier Upstash Redis au projet.
 
+Le fichier `.env.production.example` sert de liste de contrôle. Il ne faut pas
+le renommer en fichier de production ni y écrire de vrais secrets : toutes les
+valeurs sensibles doivent être enregistrées dans les variables chiffrées du
+projet Vercel.
+
 Ajouter ces variables aux environnements Production et, si nécessaire, Preview :
 
 ```text
@@ -82,11 +98,18 @@ Vercel injecte aussi son propre nom d'hôte ; TableChat l'ajoute automatiquement
 
 ## 5. Appliquer les migrations
 
-Après avoir lié le dossier au projet Vercel et enregistré les variables :
+Après avoir enregistré les variables, installer/utiliser le CLI sans l'ajouter
+aux dépendances du projet, puis lier le dossier :
 
 ```powershell
-npx vercel env run --environment=production -- .\.venv\Scripts\python.exe backend\manage.py migrate --noinput
-npx vercel env run --environment=production -- .\.venv\Scripts\python.exe backend\manage.py check --deploy
+npx --yes vercel@latest link
+```
+
+Appliquer ensuite les migrations avec les variables de production :
+
+```powershell
+npx --yes vercel@latest env run --environment=production -- .\.venv\Scripts\python.exe backend\manage.py migrate --noinput
+npx --yes vercel@latest env run --environment=production -- .\.venv\Scripts\python.exe backend\manage.py check --deploy
 ```
 
 La base Supabase neuve reçoit uniquement le schéma Django ; les comptes locaux supprimés ne sont pas recréés.
@@ -94,7 +117,7 @@ La base Supabase neuve reçoit uniquement le schéma Django ; les comptes locaux
 ## 6. Déployer
 
 ```powershell
-npx vercel --prod
+npx --yes vercel@latest --prod
 ```
 
 Après le premier déploiement, reporter l'URL de production exacte dans `APP_BASE_URL`, puis redéployer si elle était encore provisoire.
