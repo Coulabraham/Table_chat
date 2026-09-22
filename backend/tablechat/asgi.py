@@ -1,6 +1,11 @@
 import os
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "tablechat.settings.development")
+settings_module = (
+    "tablechat.settings.production"
+    if os.environ.get("VERCEL")
+    else "tablechat.settings.development"
+)
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", settings_module)
 
 from channels.auth import AuthMiddlewareStack
 from channels.routing import ProtocolTypeRouter, URLRouter
@@ -20,3 +25,5 @@ application = ProtocolTypeRouter(
     }
 )
 
+# Vercel attend un gestionnaire ASGI exporté sous le nom ``app``.
+app = application
