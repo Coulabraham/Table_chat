@@ -42,7 +42,7 @@ def test_registration_can_temporarily_bypass_email_verification():
     assert response.status_code == 201
     assert response.data["email_verified"] is True
     assert response.data["verification_email_sent"] is False
-    assert User.objects.get(public_id="tester").email_verified_at is not None
+    assert User.objects.get(public_id="tester").email_verified_at is None
     assert len(mail.outbox) == 0
 
     User.objects.create_user(

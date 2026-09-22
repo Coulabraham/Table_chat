@@ -68,9 +68,6 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        if not settings.REQUIRE_EMAIL_VERIFICATION:
-            user.email_verified_at = timezone.now()
-            user.save(update_fields=("email_verified_at",))
         login(request, user)
         track_request_session(request)
         data = MeSerializer(user).data
