@@ -1,10 +1,10 @@
 import re
 
-from django.conf import settings
 from django.contrib.auth import authenticate, password_validation
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
+from .access import email_verification_satisfied
 from .models import AccountSession, User, UserBlock
 
 PUBLIC_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{2,31}$")
@@ -25,7 +25,7 @@ class MeSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "email", "public_id", "email_verified", "email_verified_at")
 
     def get_email_verified(self, obj):
-        return not settings.REQUIRE_EMAIL_VERIFICATION or obj.email_verified
+        return email_verification_satisfied(obj)
 
 
 class RegisterSerializer(serializers.ModelSerializer):

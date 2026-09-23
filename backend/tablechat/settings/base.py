@@ -104,7 +104,27 @@ X_FRAME_OPTIONS = "DENY"
 DATA_UPLOAD_MAX_MEMORY_SIZE = 64 * 1024
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
-CHANNEL_LAYERS = {"default": {"BACKEND": "channels_redis.core.RedisChannelLayer", "CONFIG": {"hosts": [REDIS_URL], "capacity": 500, "expiry": 60}}}
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [
+                {
+                    "address": REDIS_URL,
+                    # channels-redis bloque jusqu'à 5 s dans BZPOPMIN. Le
+                    # défaut de redis-py 8 est aussi de 5 s et provoque une
+                    # fausse expiration qui ferme le WebSocket.
+                    "socket_timeout": None,
+                    "socket_connect_timeout": 5,
+                    "socket_keepalive": True,
+                }
+            ],
+            "capacity": 500,
+            "expiry": 60,
+            "group_expiry": 600,
+        },
+    }
+}
 
 CACHE_URL = os.environ.get("CACHE_URL")
 if CACHE_URL:

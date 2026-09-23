@@ -1,6 +1,6 @@
 # TableChat
 
-TableChat est une messagerie privée pour essais sur un réseau local. Deux personnes peuvent créer un compte, vérifier leur adresse, se retrouver par identifiant public et échanger des messages persistants en temps réel. PostgreSQL est la source de vérité ; Redis transporte les événements WebSocket.
+TableChat est une messagerie privée disponible en local et sur Vercel. Deux personnes peuvent créer un compte, se retrouver par identifiant public et échanger des messages persistants en temps réel. PostgreSQL est la source de vérité; Redis transporte les événements WebSocket entre les instances ASGI.
 
 > Cette version n'utilise pas de chiffrement de bout en bout. TLS protège le transport, mais le serveur et les administrateurs de l'infrastructure peuvent lire les messages. Ne pas ouvrir ce prototype au public.
 
@@ -67,11 +67,16 @@ Installer uniquement ce certificat public sur les appareils de test et ouvrir `h
 
 ## Vérification email et récupération
 
-À l'inscription, le compte est explicitement non vérifié et un email est déposé dans Mailpit. Avant vérification, l'utilisateur peut se connecter, consulter/modifier son profil, gérer ses sessions et blocages, renvoyer le lien, utiliser la récupération et se déconnecter. La recherche de contacts, les conversations et les WebSockets privés sont refusés côté serveur.
+La politique est commandée par `REQUIRE_EMAIL_VERIFICATION` et une même règle est utilisée par les API HTTP et les WebSockets :
+
+- `true` : un compte non vérifié peut gérer son profil, ses sessions et sa sécurité, mais la recherche et la messagerie sont refusées;
+- `false` : un compte authentifié non vérifié peut utiliser la messagerie sans être marqué artificiellement comme vérifié en base.
+
+En local, Mailpit reçoit les liens. En production, la valeur reste actuellement à `false`, car le domaine de test Resend ne peut envoyer qu'au propriétaire du compte Resend. Ne pas réactiver la vérification avant d'avoir validé un domaine d'envoi utilisable par tous les utilisateurs concernés.
 
 Les comptes créés avant la migration `accounts.0003` restent volontairement non vérifiés. Après connexion, ils doivent utiliser **Réglages > Renvoyer le lien**.
 
-Procédure complète : [docs/EMAILS.md](docs/EMAILS.md). Les variables `EMAIL_*` de `.env.example` permettent plus tard de brancher un SMTP réel, mais aucun service externe n'est configuré ou souscrit ici.
+Procédure locale : [docs/EMAILS.md](docs/EMAILS.md). Préparation Resend : [docs/DEPLOIEMENT_VERCEL_SUPABASE.md](docs/DEPLOIEMENT_VERCEL_SUPABASE.md).
 
 ## Sauvegarde et restauration
 
@@ -91,6 +96,7 @@ cd backend
 
 cd ..\frontend
 npm ci
+npm test
 npm run build
 npm run lint
 npm audit
@@ -99,7 +105,16 @@ $env:TABLECHAT_MAILPIT_URL="http://127.0.0.1:8025"
 npm run test:e2e -- --project=desktop
 ```
 
-La recette navigateur récupère réellement les liens de vérification avec l'API locale Mailpit. Les résultats constatés sont consignés dans [docs/VERIFICATIONS.md](docs/VERIFICATIONS.md).
+La recette locale récupère réellement les liens de vérification avec Mailpit. Une sonde séparée vérifie les vraies trames en production avec les comptes de test autorisés :
+
+```powershell
+cd frontend
+$env:TABLECHAT_URL="https://table-chat-blush.vercel.app"
+$env:TABLECHAT_TEST_PASSWORD="<mot de passe de recette>"
+node scripts/production-realtime-check.mjs
+```
+
+Les résultats constatés sont consignés dans [docs/VERIFICATIONS.md](docs/VERIFICATIONS.md).
 
 ## Architecture
 
@@ -108,13 +123,14 @@ La recette navigateur récupère réellement les liens de vérification avec l'A
 - `frontend` : React/TypeScript, TanStack Query, React Router et Tailwind ;
 - `mailpit` : SMTP et boîte locale de développement, liés uniquement à `127.0.0.1:1025/8025` ;
 - `infra/Caddyfile` : HTTPS et origine unique ;
-- `compose.yaml` : frontend, backend ASGI, worker, PostgreSQL, Redis, Mailpit et Caddy.
+- `compose.yaml` : frontend, backend ASGI, worker, PostgreSQL, Redis, Mailpit et Caddy;
+- Vercel : aucun worker Docker permanent; l'outbox est relancée après écriture, à la connexion, au nouvel envoi et sur les pings WebSocket.
 
 Les contrats sont dans [docs/API.md](docs/API.md), la sécurité dans [docs/SECURITE.md](docs/SECURITE.md) et la recette manuelle dans [docs/RECETTE.md](docs/RECETTE.md).
 
 ## Déploiement Internet
 
-Le dépôt contient une configuration Vercel Services qui conserve le frontend, l'API Django et les WebSockets sur la même origine. PostgreSQL peut être fourni par Supabase et Redis par une intégration Upstash du Marketplace Vercel. Vercel Services et les WebSockets Functions étant encore en bêta, le client reconnecte automatiquement les connexions arrivées à leur durée maximale. La liste des variables se trouve dans [.env.production.example](.env.production.example) et la procédure complète dans [docs/DEPLOIEMENT_VERCEL_SUPABASE.md](docs/DEPLOIEMENT_VERCEL_SUPABASE.md).
+Le déploiement actif est `https://table-chat-blush.vercel.app`. La configuration Vercel Services conserve le frontend, l'API Django et les WebSockets sur la même origine. Supabase fournit PostgreSQL et Upstash le Redis TCP chiffré `rediss://`. Les WebSockets Vercel Functions sont en bêta et exigent Fluid Compute; le client reconnecte automatiquement une connexion interrompue et rattrape l'historique depuis PostgreSQL. Voir [.env.production.example](.env.production.example) et [docs/DEPLOIEMENT_VERCEL_SUPABASE.md](docs/DEPLOIEMENT_VERCEL_SUPABASE.md).
 
 ## Limites avant ouverture publique
 
@@ -124,4 +140,5 @@ Le dépôt contient une configuration Vercel Services qui conserve le frontend, 
 - l'autorité TLS de Caddy reste strictement locale ; le déploiement public utilise le certificat géré par Vercel ;
 - pas encore de supervision, sauvegarde externe chiffrée automatisée, restauration planifiée, audit externe ni test de charge ;
 - les informations de navigateur/appareil sont seulement indicatives ;
-- le déploiement public nécessite encore les comptes, secrets et ressources Vercel, Supabase, Redis et SMTP du propriétaire.
+- les cinq comptes de recette partagent un mot de passe et doivent être remplacés ou individualisés avant une ouverture publique;
+- Resend nécessite encore un domaine d'envoi vérifié avant de remettre `REQUIRE_EMAIL_VERIFICATION=true`.

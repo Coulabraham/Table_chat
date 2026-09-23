@@ -1,41 +1,69 @@
-# Vérifications effectuées le 21 septembre 2026
+# Vérifications TableChat — 23 septembre 2026
 
-## Lot 1 — messagerie
+Ce document distingue les contrôles automatisés locaux des validations effectuées sur `https://table-chat-blush.vercel.app`.
 
-- Messagerie privée persistante, idempotence, pagination, rattrapage et WebSocket validés.
-- Redémarrage du backend sans perte de données validé.
-- Interface contrôlée en desktop et viewport mobile.
+## Résultat local
 
-## Lot 2 — comptes et protections
+- Backend : **35 tests réussis** avec `pytest`.
+- Matrice HTTP et WebSocket : compte vérifié/non vérifié × vérification obligatoire activée/désactivée.
+- Refus testés : anonyme, session expirée, session révoquée, personne extérieure et blocage.
+- WebSocket ouvert : révocation → `4401`, blocage → `4403`, email requis → `4404`.
+- Frontend : **5 tests Vitest réussis**. Les codes d'autorisation ne sont pas reconnectés en boucle; les fermetures transitoires utilisent un recul exponentiel borné.
+- Déduplication frontend testée par `id` et `client_id`.
+- Panne Redis simulée : le message reste dans PostgreSQL et l'outbox, une reprise ultérieure le diffuse, et une répétition du même `client_id` ne crée qu'une ligne.
+- Relance sans worker permanent testée sur connexion et ping WebSocket.
+- `makemigrations --check --dry-run` : aucun changement manquant.
+- `manage.py check` : aucune erreur.
+- Build TypeScript/Vite et ESLint : réussis.
+- `npm audit` : zéro vulnérabilité connue au niveau contrôlé.
 
-- `pytest` : **19 tests réussis**.
-- Vérification email : inscription non vérifiée, dépôt d'email, consommation unique, expiration et invalidation après changement d'adresse.
-- Renvoi : cinq réponses acceptées puis limitation HTTP 429.
-- Récupération : réponse identique pour adresse existante/absente, nouveau mot de passe Argon2, lien non réutilisable et révocation des sessions.
-- Sessions : session actuelle distinguée, autre session révoquée, socket correspondante fermée en `4401`.
-- Blocage : envoi refusé dans les deux sens, historique conservé, déblocage fonctionnel et socket ouverte fermée en `4403`.
-- Absence de régression de la messagerie couverte par les anciens tests complétés.
-- `makemigrations --check --dry-run` : aucun changement manquant ; `manage.py check` : aucune erreur.
-- Frontend : compilation TypeScript/Vite réussie, ESLint réussi, `npm audit` à zéro vulnérabilité connue.
-- Playwright contre la pile Docker HTTPS : scénario complet **desktop réussi** et **mobile réussi**. Il crée deux comptes, récupère leurs vrais emails via Mailpit, consomme les liens, échange dans les deux sens et recharge l'historique.
-- Playwright en mode développement local : scénario desktop réussi avec le même parcours de vérification email réel.
-- Contrôle visuel automatisé à `1440x900` et `320x700` : aucun débordement horizontal sur la connexion, la récupération, les discussions et les réglages ; zone de saisie visible dans les deux formats.
-- Docker : backend, PostgreSQL, Redis, worker, frontend, Caddy et Mailpit démarrés ; API `/api/health/` saine.
-- Migration réelle `accounts.0003` appliquée sans perte : compteurs historiques avant/après `4 utilisateurs`, `3 conversations`, `9 messages`. Les quatre comptes existants sont explicitement non vérifiés.
-- Sauvegarde pré-migration puis post-migration créées localement. Chaque fichier a été restauré dans une base isolée ; contrôle post-migration : `4|3|9`. La base temporaire a été supprimée après le test.
-- Les quatre comptes, deux conversations et quatre messages créés uniquement par Playwright ont été supprimés après assertions ; aucune donnée historique n'a été supprimée.
+## Cause des coupures observées en production
 
-## Limites de la vérification
+Deux défauts distincts ont été reproduits :
 
-- L'envoi SMTP externe n'a volontairement pas été essayé ; seul Mailpit local est configuré.
-- Aucun service de sauvegarde externe n'a été appelé.
-- Le rendu a été automatisé avec Chromium desktop/mobile ; les menus natifs d'installation de certificat restent dépendants de chaque appareil physique.
-- Les messages restent lisibles par le serveur et dans les sauvegardes.
+1. le consommateur WebSocket vérifiait directement `email_verified_at`, contrairement aux permissions HTTP qui respectaient `REQUIRE_EMAIL_VERIFICATION=false`;
+2. `channels-redis 4.3.0` appelle `BZPOPMIN` avec un blocage de 5 secondes, tandis que `redis-py 8.1` avait aussi un délai de lecture par défaut de 5 secondes. Le lecteur expirait normalement après environ 5 secondes et l'exception fermait le consommateur ASGI.
 
-## Préparation du déploiement public
+La politique d'accès est désormais commune. `redis-py` est figé à `7.4.0` et le canal définit explicitement `socket_timeout=None`, un délai de connexion de 5 secondes et le keepalive. Le transport de production reste l'URI Redis TCP chiffrée `rediss://` sur le port natif Upstash, pas l'API REST.
 
-- Configuration `vercel.json` multi-service analysée comme JSON valide : frontend Vite, backend Django ASGI, routes API/WebSocket et repli SPA.
-- Réglages de production importés avec un environnement Vercel simulé : hôte Vercel et origine CSRF ajoutés automatiquement, dépendances Supabase/Redis exigées.
-- Cache Redis partagé activable pour que les limitations de fréquence ne soient pas propres à une seule instance Vercel.
-- Reprise opportuniste ajoutée sans régression dans la suite des 19 tests ; compilation, ESLint et audit npm toujours réussis.
-- Le CLI Vercel `59.24.0` a été essayé localement, mais aucun compte Vercel, Supabase ou secret cloud n'est connecté sur ce PC. Aucun déploiement public n'a donc encore été créé.
+## Recette réellement passée en ligne
+
+La sonde `frontend/scripts/production-realtime-check.mjs` utilise uniquement les comptes de test autorisés. Le passage réussi, identifié par le marqueur `prod-1790202450757`, a vérifié :
+
+- deux contextes Chromium indépendants connectés avec leurs cookies de session;
+- réception de la trame WebSocket `ready` des deux côtés;
+- message Alice → Bob puis Bob → Alice, avec observation directe de vraies trames `message.created`;
+- même `client_id` envoyé deux fois : réponses `201` puis `200`, même identifiant serveur et une seule ligne dans l'historique;
+- fermeture contrôlée de la vue de Bob, message envoyé pendant son absence, réouverture d'un nouveau WebSocket authentifié et rattrapage du message;
+- historique présent après rechargement des deux pages;
+- blocage sur connexions déjà ouvertes : fermeture et interface indisponible des deux côtés, puis déblocage de nettoyage;
+- révocation de toutes les autres sessions d'un compte de test : socket ouverte fermée et navigateur renvoyé vers `/login`.
+
+Cette fermeture contrôlée simule l'effet d'une fin de Function Vercel. Vercel ferme aussi réellement les WebSockets à la durée maximale de la Function; le client recrée alors le socket et recharge les messages manquants depuis PostgreSQL.
+
+## Outbox et worker
+
+- Docker local exécute `python manage.py retry_pending_events --watch` dans le service `event-worker`.
+- Vercel n'exécute **aucun** processus Docker permanent pour ce dépôt.
+- En ligne, la première tentative part dans `transaction.on_commit` après l'écriture PostgreSQL.
+- En cas d'échec Redis, l'outbox conserve l'événement avec compteur, erreur non sensible et prochaine date de tentative.
+- Une connexion, un nouvel envoi ou le ping de 20 secondes d'un socket déjà ouvert relance les événements arrivés à échéance.
+- La contrainte unique `(author, client_id)` empêche le doublon en base; le frontend fusionne aussi les répétitions éventuelles d'une livraison au moins une fois.
+
+Ce mécanisme est adapté au prototype sur Vercel, mais ce n'est pas une file à garantie forte avec worker dédié : sans socket ouverte, nouvelle connexion ou nouvel envoi, une ligne d'outbox attend. Un service de tâches permanent ou une file managée sera préférable avant une forte charge.
+
+## Email
+
+Resend SMTP est configuré avec son domaine de test. Un envoi vers l'adresse propriétaire autorisée a déjà été reçu, mais `onboarding@resend.dev` ne permet pas d'envoyer les vérifications à tous les futurs utilisateurs. `REQUIRE_EMAIL_VERIFICATION` reste donc volontairement à `false`.
+
+La réactivation exige un domaine contrôlé, ses enregistrements SPF/DKIM validés par Resend, une adresse `From` de ce domaine, puis des essais de livraison vers des destinataires autorisés. Aucun domaine n'a été acheté et aucun compte existant n'a été marqué artificiellement comme vérifié.
+
+## Comptes de test et confidentialité
+
+Les cinq comptes `test1@example.test` à `test5@example.test` partagent volontairement un mot de passe de recette. Ils ne doivent jamais devenir des comptes publics ou privilégiés. Ne pas publier leur mot de passe, ne pas y stocker de conversation réelle et les remplacer ou leur attribuer des mots de passe distincts avant une ouverture publique. Ils n'ont pas été supprimés et leurs accès n'ont pas été modifiés.
+
+Les messages ne sont **pas chiffrés de bout en bout**. TLS chiffre le transport, mais le serveur, PostgreSQL/Supabase et les sauvegardes peuvent lire le contenu.
+
+## Verdict
+
+La messagerie privée est stable pour poursuivre le développement fonctionnel en environnement de test. Le démarrage des groupes peut commencer sur une branche séparée, à condition de conserver ces tests. L'ouverture publique reste bloquée par le domaine d'envoi email, le traitement des comptes de test, l'observabilité et une stratégie d'outbox/worker plus robuste à grande échelle.

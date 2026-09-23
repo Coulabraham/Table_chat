@@ -1,6 +1,7 @@
 import uuid
 
 import pytest
+from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -113,3 +114,26 @@ def test_unverified_account_cannot_use_private_messaging():
     client=APIClient();client.force_login(alice)
     assert client.get("/api/users/search/?public_id=someone").status_code==403
     assert client.get("/api/conversations/").status_code==403
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("verified", "verification_required", "expected_status"),
+    (
+        (True, True, 200),
+        (True, False, 200),
+        (False, True, 403),
+        (False, False, 200),
+    ),
+)
+def test_http_messaging_uses_deployment_email_policy(verified, verification_required, expected_status):
+    user = User.objects.create_user(
+        f"policy-{verified}-{verification_required}@example.test",
+        f"policy_{int(verified)}_{int(verification_required)}",
+        "Policy",
+        "long-password-123",
+        email_verified_at=timezone.now() if verified else None,
+    )
+    client = APIClient(); client.force_login(user)
+    with override_settings(REQUIRE_EMAIL_VERIFICATION=verification_required):
+        assert client.get("/api/conversations/").status_code == expected_status

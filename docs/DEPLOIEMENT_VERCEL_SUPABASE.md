@@ -8,8 +8,14 @@
 
 Documentation officielle : [Vercel Services](https://vercel.com/docs/services),
 [runtime Python](https://vercel.com/docs/functions/runtimes/python),
-[WebSockets Vercel Functions](https://vercel.com/kb/guide/do-vercel-serverless-functions-support-websocket-connections)
+[WebSockets Vercel Functions](https://vercel.com/docs/functions/websockets)
 et [connexions PostgreSQL Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres).
+
+État réellement contrôlé le 23 septembre 2026 : projet Vercel Services en
+`iad1`, alias `https://table-chat-blush.vercel.app`, ASGI Django Channels,
+Supabase opérationnel et échange WebSocket bidirectionnel validé avec deux
+sessions. Les WebSockets Vercel sont en bêta, nécessitent Fluid Compute et
+s'arrêtent à la durée maximale de la Function.
 
 ## Architecture retenue
 
@@ -40,22 +46,67 @@ clients disponibles.
 
 Les variables REST `UPSTASH_REDIS_REST_URL` ou `KV_REST_API_URL` ne remplacent pas l'URI TCP attendue par Django Channels.
 
-## 3. Configurer le SMTP réel
+TableChat fige `redis-py==7.4.0` et fournit au canal `socket_timeout=None`.
+Cette configuration est intentionnelle : `channels-redis 4.3.0` attend cinq
+secondes dans `BZPOPMIN`; un délai client identique coupe à tort les sockets
+inactives. Ne pas retirer ce réglage sans refaire une recette WebSocket de plus
+de cinq secondes et inspecter les journaux Vercel.
 
-Créer des identifiants SMTP dédiés chez le fournisseur choisi et vérifier l'adresse ou le domaine d'expédition. Ne jamais utiliser ni commiter le mot de passe normal d'une boîte personnelle.
+## 3. Préparer Resend et la vérification email
+
+La production utilise actuellement les identifiants SMTP Resend et
+`onboarding@resend.dev`. Cette adresse de test ne peut envoyer qu'à l'adresse du
+propriétaire autorisée par Resend. Elle permet une recette technique, mais pas
+la vérification des futurs inscrits. Conserver
+`REQUIRE_EMAIL_VERIFICATION=false` tant qu'un domaine d'envoi n'est pas prêt.
+
+Procédure sans exposer l'API key :
+
+1. disposer d'un domaine ou sous-domaine contrôlé; ne rien acheter
+   automatiquement;
+2. dans **Resend > Domains > Add domain**, choisir de préférence un sous-domaine
+   d'envoi tel que `mail.example.com`;
+3. copier exactement chez le fournisseur DNS les enregistrements affichés par
+   Resend. Ils comprennent les preuves DKIM et SPF nécessaires à l'envoi
+   (TXT et, selon la configuration proposée, MX); ajouter DMARC selon la
+   recommandation Resend;
+4. attendre que la capacité **Sending** soit `Verified`. Ne pas recopier des
+   valeurs d'un autre domaine;
+5. créer une API key dédiée à TableChat avec les droits minimums, l'enregistrer
+   comme secret Vercel `EMAIL_HOST_PASSWORD`, et ne jamais la mettre dans Git;
+6. utiliser une adresse du domaine validé, par exemple
+   `TableChat <noreply@mail.example.com>`, dans `DEFAULT_FROM_EMAIL`;
+7. laisser d'abord `REQUIRE_EMAIL_VERIFICATION=false`, envoyer un test à une
+   adresse possédée et autorisée, vérifier `Sent` puis `Delivered` dans Resend,
+   le lien HTTPS et sa consommation unique;
+8. tester inscription, renvoi limité et récupération avec au moins deux
+   fournisseurs de boîte si possible;
+9. seulement ensuite préparer les comptes existants et passer la variable à
+   `true`.
+
+Au moment de la réactivation, les comptes dont `email_verified_at` est vide ne
+sont pas promus automatiquement. Ils restent connectables, ouvrent
+`/verify-email`, demandent un nouveau lien puis récupèrent la messagerie après
+validation. Prévenir les testeurs avant le changement et conserver un chemin
+de retour à `false` si la délivrabilité échoue.
+
+Paramètres SMTP Resend :
 
 ```text
 EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
-EMAIL_HOST=smtp.fournisseur.example
+EMAIL_HOST=smtp.resend.com
 EMAIL_PORT=587
-EMAIL_HOST_USER=identifiant-smtp
-EMAIL_HOST_PASSWORD=secret-smtp
+EMAIL_HOST_USER=resend
+EMAIL_HOST_PASSWORD=<API key Resend dédiée>
 EMAIL_USE_TLS=true
 EMAIL_USE_SSL=false
-DEFAULT_FROM_EMAIL=TableChat <noreply@votre-domaine.example>
+DEFAULT_FROM_EMAIL=TableChat <noreply@mail.example.com>
 ```
 
-Pour un fournisseur qui impose le port `465`, utiliser `EMAIL_USE_SSL=true` et `EMAIL_USE_TLS=false`.
+Resend accepte aussi le port `465`; dans ce cas utiliser
+`EMAIL_USE_SSL=true` et `EMAIL_USE_TLS=false`. Documentation :
+[SMTP Resend](https://resend.com/docs/send-with-smtp) et
+[domaines Resend](https://resend.com/docs/dashboard/domains/introduction).
 
 ## 4. Créer le projet Vercel
 
@@ -99,8 +150,10 @@ PASSWORD_RESET_TTL_SECONDS=1800
 ```
 
 Pour des essais privés uniquement, `REQUIRE_EMAIL_VERIFICATION=false` autorise
-immédiatement les comptes nouveaux et existants sans envoyer de lien. Remettre
-la valeur à `true` avant toute ouverture publique.
+immédiatement les comptes nouveaux et existants sans les marquer vérifiés et
+sans envoyer de lien. La même politique est appliquée par HTTP et WebSocket.
+Remettre la valeur à `true` avant toute ouverture publique, mais uniquement
+après la procédure Resend ci-dessus.
 
 Vercel injecte aussi son propre nom d'hôte ; TableChat l'ajoute automatiquement aux hôtes Django et aux origines CSRF autorisées. `APP_BASE_URL` doit néanmoins désigner l'URL de production stable afin que les liens reçus par email soient corrects.
 
@@ -140,8 +193,51 @@ Après le premier déploiement, reporter l'URL de production exacte dans `APP_BA
 6. Révoquer une session et vérifier que son WebSocket est fermé.
 7. Bloquer puis débloquer un utilisateur et vérifier les deux sens.
 8. Tester le parcours de récupération du mot de passe.
+9. Inspecter une trame `message.created`; un message visible après un simple
+   rechargement HTTP ne prouve pas le temps réel.
 
-Le frontend reconnecte automatiquement les WebSockets lorsque Vercel ferme une fonction arrivée à sa durée maximale. Les événements non diffusés sont rejoués au prochain envoi ou à la prochaine connexion ; le rattrapage HTTP reste la source de vérité.
+La sonde automatisée réalise cette recette sans incorporer le mot de passe :
+
+```powershell
+cd frontend
+$env:TABLECHAT_URL="https://table-chat-blush.vercel.app"
+$env:TABLECHAT_TEST_PASSWORD="<secret partagé de recette>"
+node scripts/production-realtime-check.mjs
+```
+
+Le frontend reconnecte automatiquement les WebSockets lorsque Vercel ferme une
+Function arrivée à sa durée maximale. Les événements non diffusés sont rejoués
+au prochain envoi, à la prochaine connexion ou sur le ping de 20 secondes d'un
+socket ouvert; le rattrapage HTTP depuis PostgreSQL reste la source de vérité.
+
+## 8. Outbox sur Vercel
+
+Le service `event-worker` de `compose.yaml` existe seulement en local. Vercel
+n'exécute pas `retry_pending_events --watch` en arrière-plan.
+
+En production :
+
+- la transaction crée `Message` et `DeliveryOutbox` ensemble;
+- `transaction.on_commit` tente immédiatement la diffusion Redis;
+- un échec conserve l'outbox et calcule un délai croissant, plafonné à cinq
+  minutes;
+- les connexions, pings et nouveaux envois relancent les lignes arrivées à
+  échéance;
+- `(author, client_id)` est unique et le frontend fusionne les événements par
+  `id`/`client_id`.
+
+Il s'agit d'une reprise opportuniste compatible avec les Functions, pas d'un
+worker permanent. Pour un trafic important, utiliser une file/queue managée ou
+un service persistant et conserver la même idempotence.
+
+## 9. Retour arrière
+
+Chaque déploiement Vercel reste immuable. En cas de régression, utiliser
+**Deployments > Promote to Production** sur le dernier déploiement sain ou la
+commande de rollback proposée par le CLI Vercel, puis confirmer `/api/health/`
+et une connexion. Un retour arrière applicatif ne supprime aucune donnée
+Supabase. Ne jamais tenter d'annuler une migration destructive sans sauvegarde
+et procédure spécifique.
 
 ## Sécurité et exploitation
 
@@ -149,5 +245,7 @@ Le frontend reconnecte automatiquement les WebSockets lorsque Vercel ferme une f
 - Activer l'authentification multifacteur sur les comptes Vercel, Supabase, GitHub et SMTP.
 - Configurer les budgets et alertes d'utilisation avant d'ouvrir largement les inscriptions.
 - Consulter les journaux d'erreur Vercel et l'utilisation de la base/Redis.
+- Les cinq comptes de test partagent un mot de passe : ne pas le publier, ne
+  stocker aucune donnée réelle et remplacer/séparer ces accès avant le public.
 - Tester régulièrement un export PostgreSQL dans une base isolée. Les sauvegardes proposées par Supabase dépendent du plan choisi et ne remplacent pas nécessairement une copie indépendante.
 - Les messages ne sont toujours pas chiffrés de bout en bout : le serveur, Supabase et les sauvegardes peuvent les lire.
