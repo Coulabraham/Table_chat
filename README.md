@@ -1,6 +1,6 @@
 # TableChat
 
-TableChat est une messagerie privée disponible en local et sur Vercel. Deux personnes peuvent créer un compte, se retrouver par identifiant public et échanger des messages persistants en temps réel. PostgreSQL est la source de vérité; Redis transporte les événements WebSocket entre les instances ASGI.
+TableChat est une messagerie privée et de groupe disponible en local et sur Vercel. Les personnes se retrouvent par identifiant public et échangent des messages persistants en temps réel. PostgreSQL est la source de vérité; Redis transporte les événements WebSocket entre les instances ASGI.
 
 > Cette version n'utilise pas de chiffrement de bout en bout. TLS protège le transport, mais le serveur et les administrateurs de l'infrastructure peuvent lire les messages. Ne pas ouvrir ce prototype au public.
 
@@ -12,6 +12,9 @@ TableChat est une messagerie privée disponible en local et sur Vercel. Deux per
 - inventaire indicatif des sessions, révocation d'une session ou de toutes les autres ;
 - blocage dans les deux sens sans suppression de l'historique ;
 - conversation privée persistante, WebSocket, reconnexion et rattrapage ;
+- groupes avec invitations internes, propriétaire, administrateurs et membres ;
+- historique borné par chaque période d’adhésion, retrait temps réel et transfert de propriété ;
+- compteurs non lus synchronisés entre appareils et mise en sourdine par conversation ;
 - sauvegarde PostgreSQL et restauration de contrôle dans une base isolée ;
 - interface React adaptée au téléphone et à l'ordinateur.
 
@@ -119,7 +122,7 @@ Les résultats constatés sont consignés dans [docs/VERIFICATIONS.md](docs/VERI
 ## Architecture
 
 - `backend/accounts` : utilisateurs, jetons à usage unique, email, récupération, sessions, blocages, CSRF et limitations de débit ;
-- `backend/chat` : paire privée canonique, historique par curseur, idempotence, WebSocket et outbox ;
+- `backend/chat` : paires privées, groupes, adhésions historisées, invitations, curseurs de lecture, WebSocket et outbox ;
 - `frontend` : React/TypeScript, TanStack Query, React Router et Tailwind ;
 - `mailpit` : SMTP et boîte locale de développement, liés uniquement à `127.0.0.1:1025/8025` ;
 - `infra/Caddyfile` : HTTPS et origine unique ;
@@ -136,7 +139,7 @@ Le déploiement actif est `https://table-chat-blush.vercel.app`. La configuratio
 
 - aucune modification d'adresse email ni suppression de compte ;
 - aucun chiffrement de bout en bout ;
-- aucun groupe, fichier, appel, jeu, paiement ou notification Push ;
+- aucun fichier, appel, jeu, paiement ou notification Push ;
 - l'autorité TLS de Caddy reste strictement locale ; le déploiement public utilise le certificat géré par Vercel ;
 - pas encore de supervision, sauvegarde externe chiffrée automatisée, restauration planifiée, audit externe ni test de charge ;
 - les informations de navigateur/appareil sont seulement indicatives ;

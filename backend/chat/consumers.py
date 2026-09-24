@@ -8,7 +8,7 @@ from django.utils import timezone
 from accounts.access import can_use_private_messaging, email_verification_satisfied
 from accounts.models import UserBlock
 from accounts.services import session_group_name
-from .models import Conversation
+from .models import Conversation, ConversationMembership
 from .services import publish_pending_events
 
 logger = logging.getLogger(__name__)
@@ -70,6 +70,17 @@ class ConversationConsumer(AsyncJsonWebsocketConsumer):
             return
         await self.send_json({"type": "message.created", "message": event["message"]})
 
+    async def conversation_event(self, event):
+        if not await self.session_is_valid():
+            await self.close(code=self.AUTHENTICATION_REQUIRED)
+            return
+        if close_code := await self.authorization_close_code():
+            await self.close(code=close_code)
+            return
+        await self.send_json(
+            {"type": event["event_type"], "conversation_id": str(self.conversation_id), **event.get("payload", {})}
+        )
+
     async def session_revoked(self, event):
         await self.close(code=self.AUTHENTICATION_REQUIRED)
 
@@ -88,16 +99,19 @@ class ConversationConsumer(AsyncJsonWebsocketConsumer):
             ):
                 return self.EMAIL_VERIFICATION_REQUIRED
             return self.AUTHENTICATION_REQUIRED
-        conversation = Conversation.objects.filter(pk=self.conversation_id).filter(
-            user_low=self.user
-        ).first() or Conversation.objects.filter(pk=self.conversation_id, user_high=self.user).first()
+        conversation = Conversation.objects.filter(pk=self.conversation_id, archived_at__isnull=True).first()
         if conversation is None:
             return self.ACCESS_FORBIDDEN
-        if UserBlock.objects.filter(
-            blocker_id__in=(conversation.user_low_id, conversation.user_high_id),
-            blocked_id__in=(conversation.user_low_id, conversation.user_high_id),
+        if not ConversationMembership.objects.filter(
+            conversation=conversation, user=self.user, left_at__isnull=True
         ).exists():
             return self.ACCESS_FORBIDDEN
+        if conversation.kind == Conversation.Kind.PRIVATE:
+            if UserBlock.objects.filter(
+                blocker_id__in=(conversation.user_low_id, conversation.user_high_id),
+                blocked_id__in=(conversation.user_low_id, conversation.user_high_id),
+            ).exists():
+                return self.ACCESS_FORBIDDEN
         return None
 
     @database_sync_to_async

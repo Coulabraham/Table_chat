@@ -8,8 +8,8 @@ import uuid
 import pytest
 
 from accounts.models import User, UserBlock
-from chat.models import Conversation
-from chat.services import create_message, get_or_create_private_conversation
+from chat.models import Conversation, ConversationMembership
+from chat.services import create_group, create_message, get_or_create_private_conversation
 from tablechat.asgi import application
 
 
@@ -247,3 +247,75 @@ async def test_ping_retries_pending_outbox_without_permanent_worker(monkeypatch)
         {"conversation_id": conversation_id},
     ]
     await communicator.disconnect()
+
+
+@sync_to_async
+def make_group_socket_fixture():
+    marker = uuid.uuid4().hex[:8]
+    users = []
+    sessions = []
+    for index in range(3):
+        user = User.objects.create_user(
+            f"group-ws-{marker}-{index}@example.test",
+            f"group_ws_{marker}_{index}",
+            f"Membre {index + 1}",
+            "long-password-123",
+            email_verified_at=timezone.now(),
+        )
+        client = Client(); client.force_login(user)
+        users.append(user)
+        sessions.append(client.cookies["sessionid"].value)
+    conversation = create_group(users[0], name="Groupe temps réel")
+    for user in users[1:]:
+        ConversationMembership.objects.create(
+            conversation=conversation,
+            user=user,
+            role=ConversationMembership.Role.MEMBER,
+        )
+    return conversation.id, [user.id for user in users], sessions
+
+
+@sync_to_async
+def send_group_message(conversation_id, author_id):
+    conversation = Conversation.objects.get(pk=conversation_id)
+    author = User.objects.get(pk=author_id)
+    return create_message(conversation, author, client_id=uuid.uuid4(), content="Bonjour au groupe")[0].id
+
+
+@sync_to_async
+def remove_group_user(conversation_id, owner_id, target_id):
+    owner = User.objects.get(pk=owner_id)
+    client = Client(); client.force_login(owner)
+    return client.delete(f"/api/conversations/{conversation_id}/members/{target_id}/").status_code
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_group_realtime_reaches_three_sessions_and_removal_closes_socket():
+    conversation_id, user_ids, sessions = await make_group_socket_fixture()
+    sockets = [
+        WebsocketCommunicator(
+            application,
+            f"/ws/conversations/{conversation_id}/",
+            headers=ws_headers(session_id),
+        )
+        for session_id in sessions
+    ]
+    for communicator in sockets:
+        connected, _ = await communicator.connect()
+        assert connected is True
+        assert (await communicator.receive_json_from())["type"] == "ready"
+    message_id = await send_group_message(conversation_id, user_ids[0])
+    for communicator in sockets:
+        event = await communicator.receive_json_from()
+        assert event["type"] == "message.created"
+        assert event["message"]["id"] == message_id
+    assert await remove_group_user(conversation_id, user_ids[0], user_ids[2]) == 204
+    close_event = await sockets[2].receive_output()
+    assert close_event["type"] == "websocket.close" and close_event["code"] == 4403
+    # Les autres membres reçoivent l'événement public, sans données d'invitation.
+    for communicator in sockets[:2]:
+        event = await communicator.receive_json_from()
+        assert event["type"] == "member.removed"
+        assert "invitee" not in event and "expires_at" not in event
+        await communicator.disconnect()

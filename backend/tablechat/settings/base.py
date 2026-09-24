@@ -79,7 +79,14 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework.authentication.SessionAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.UserRateThrottle"],
-    "DEFAULT_THROTTLE_RATES": {"user": "240/min", "auth": "10/min", "message": "60/min", "email_action": "5/hour"},
+    "DEFAULT_THROTTLE_RATES": {
+        "user": "240/min",
+        "auth": "10/min",
+        "message": "60/min",
+        "email_action": "5/hour",
+        "group_create": "10/hour",
+        "group_invite": "60/hour",
+    },
     "NUM_PROXIES": 1,
     "EXCEPTION_HANDLER": "tablechat.exceptions.api_exception_handler",
 }
@@ -155,3 +162,5 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "TableChat <noreply@ta
 REQUIRE_EMAIL_VERIFICATION = os.environ.get("REQUIRE_EMAIL_VERIFICATION", "true").lower() == "true"
 EMAIL_VERIFICATION_TTL_SECONDS = int(os.environ.get("EMAIL_VERIFICATION_TTL_SECONDS", str(24 * 60 * 60)))
 PASSWORD_RESET_TTL_SECONDS = int(os.environ.get("PASSWORD_RESET_TTL_SECONDS", str(30 * 60)))
+GROUP_INVITATION_TTL_SECONDS = int(os.environ.get("GROUP_INVITATION_TTL_SECONDS", str(7 * 24 * 60 * 60)))
+GROUP_MAX_MEMBERS = int(os.environ.get("GROUP_MAX_MEMBERS", "50"))

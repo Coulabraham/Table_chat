@@ -25,8 +25,24 @@ Les secrets de vérification/récupération ne sont stockés qu'après SHA-256, 
 - `GET /api/conversations/{uuid}/` ;
 - `GET /api/conversations/{uuid}/messages/` avec `before` ou `after` ;
 - `POST /api/conversations/{uuid}/messages/` avec `client_id` et `content`.
+- `POST /api/conversations/{uuid}/read/` avec `message_id` ; curseur monotone appartenant à la conversation.
+- `PATCH /api/conversations/{uuid}/preferences/` avec `muted`.
 
-La vérification email est imposée côté serveur. Un blocage dans l'un ou l'autre sens retourne une indisponibilité générique à l'envoi ; l'historique reste accessible. Le contrôle est répété dans la transaction qui crée le message.
+La vérification email est imposée côté serveur. Un blocage dans l'un ou l'autre sens retourne une indisponibilité générique à l'envoi privé ; l'historique et les groupes communs restent accessibles. Le contrôle est répété dans la transaction qui crée le message.
+
+## Groupes et invitations
+
+- `POST /api/groups/` — création ; le créateur devient propriétaire.
+- `GET /api/group-invitations/` — invitations reçues encore valides.
+- `POST /api/group-invitations/{uuid}/accept/` ou `/decline/`.
+- `DELETE /api/group-invitations/{uuid}/` — annulation autorisée.
+- `GET/POST /api/conversations/{uuid}/invitations/` — suivi et invitation par identifiant public.
+- `GET /api/conversations/{uuid}/members/`.
+- `PATCH/DELETE /api/conversations/{uuid}/members/{user_id}/` — rôle ou retrait selon les droits.
+- `POST /api/conversations/{uuid}/transfer-owner/` et `POST /api/conversations/{uuid}/leave/`.
+- `PATCH /api/conversations/{uuid}/` — nom/description pour propriétaire ou administrateur.
+
+Une invitation en attente n’accorde aucun accès. L’acceptation enregistre l’ID du dernier message comme borne basse stable : seuls les messages suivants sont visibles. Un retrait ferme l’accès HTTP et WebSocket ; une réinvitation crée une nouvelle période sans restaurer l’ancien historique. Valeurs par défaut : 50 membres, invitation valable 7 jours, 10 créations/heure et 60 invitations/heure.
 
 ## WebSocket
 
@@ -34,6 +50,8 @@ Connexion : `wss://hôte/ws/conversations/{uuid}/` avec cookie de session et ori
 
 - révocation de la session : fermeture `4401` ;
 - conversation non autorisée ou blocage : fermeture `4403`, sans indiquer l'auteur du blocage ;
-- message : `message.created`.
+- message : `message.created` ;
+- groupe : `member.joined`, `member.left`, `member.removed`, `member.role_changed`, `ownership.transferred`, `group.updated` ;
+- lecture : `read.updated`.
 
 Chaque socket rejoint un groupe dérivé par SHA-256 de la clé de session, jamais exposé au client. L'outbox et le rattrapage `?after=` restent la garantie de livraison après reconnexion.
